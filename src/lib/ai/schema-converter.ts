@@ -120,6 +120,8 @@ export function createJsonGenerationConfig<T extends z.ZodTypeAny>(
  * - Strings instead of empty objects: ["No issues"] -> []
  * - Invalid enum values: "high" -> "critical"
  * - Arrays as strings: "strength1, strength2" -> ["strength1", "strength2"]
+ * - checklistResults as array instead of object
+ * - Truncated/malformed category-specific fields
  */
 function normalizeGeminiResponse(parsed: unknown): unknown {
   if (parsed === null || typeof parsed !== "object") {
@@ -202,6 +204,27 @@ function normalizeGeminiResponse(parsed: unknown): unknown {
     } else {
       result[key] = value;
     }
+  }
+
+  // Fix checklistResults: Gemini sometimes returns array instead of expected object
+  if ("checklistResults" in result && Array.isArray(result.checklistResults)) {
+    logger.debug("Converting checklistResults from array to object structure");
+    result.checklistResults = {
+      retentionChecklist: { passed: 0, failed: 0, total: 8 },
+      seoChecklist: { passed: 0, failed: 0, total: 6 },
+    };
+  }
+
+  // Fix workflowMetrics: ensure it's an object or null
+  if ("workflowMetrics" in result && Array.isArray(result.workflowMetrics)) {
+    logger.debug("Converting workflowMetrics from array to null");
+    result.workflowMetrics = null;
+  }
+
+  // Fix toolRecommendations: ensure array items are objects
+  if ("toolRecommendations" in result && Array.isArray(result.toolRecommendations)) {
+    result.toolRecommendations = (result.toolRecommendations as unknown[])
+      .filter((item) => item !== null && typeof item === "object" && !Array.isArray(item));
   }
 
   return result;
@@ -351,6 +374,7 @@ function enforceArraySizes(obj: unknown): unknown {
 
 /**
  * Add default values for missing required fields
+ * Includes category-specific defaults for all 8 analysis categories
  */
 function addRequiredDefaults(obj: unknown): unknown {
   if (obj === null || typeof obj !== "object") {
@@ -378,6 +402,99 @@ function addRequiredDefaults(obj: unknown): unknown {
     if (result[field] === undefined || result[field] === null) {
       result[field] = 0.5; // Default middle score
       logger.debug(`Added default number for '${field}'`);
+    }
+  }
+
+  // Category-specific defaults based on category field
+  const category = result.category as string | undefined;
+  if (category) {
+    switch (category) {
+      case "checklists":
+        if (!result.checklistResults || typeof result.checklistResults !== "object") {
+          result.checklistResults = {
+            retentionChecklist: { passed: 0, failed: 0, total: 8 },
+            seoChecklist: { passed: 0, failed: 0, total: 6 },
+          };
+          logger.debug("Added default checklistResults");
+        }
+        if (!result.failedItems) {
+          result.failedItems = [];
+        }
+        break;
+
+      case "tools_workflows":
+        if (!result.workflowMetrics || typeof result.workflowMetrics !== "object") {
+          result.workflowMetrics = null;
+        }
+        if (!result.toolRecommendations) {
+          result.toolRecommendations = [];
+        }
+        break;
+
+      case "seo_metadata":
+        if (!result.seoMetrics || typeof result.seoMetrics !== "object") {
+          result.seoMetrics = {
+            titleScore: 0.5,
+            descriptionScore: 0.5,
+            tagRelevance: 0.5,
+            complianceStatus: "warning",
+          };
+          logger.debug("Added default seoMetrics");
+        }
+        if (!result.suggestions || typeof result.suggestions !== "object") {
+          result.suggestions = {
+            titles: [],
+            description: "",
+            tags: [],
+          };
+          logger.debug("Added default suggestions");
+        }
+        break;
+
+      case "core_concepts":
+        if (!result.retentionMetrics) {
+          result.retentionMetrics = null;
+        }
+        if (!result.criticalDropoffPoints) {
+          result.criticalDropoffPoints = [];
+        }
+        break;
+
+      case "scripting":
+        if (!result.scriptMetrics) {
+          result.scriptMetrics = null;
+        }
+        if (!result.visualGaps) {
+          result.visualGaps = [];
+        }
+        break;
+
+      case "visual_editing":
+        if (!result.pacingMetrics) {
+          result.pacingMetrics = null;
+        }
+        if (!result.pacingViolations) {
+          result.pacingViolations = [];
+        }
+        break;
+
+      case "audio_design":
+        if (!result.audioMetrics) {
+          result.audioMetrics = null;
+        }
+        if (!result.audioIssues) {
+          result.audioIssues = [];
+        }
+        break;
+
+      case "style_guides":
+        if (!result.styleMetrics) {
+          result.styleMetrics = null;
+        }
+        if (!result.styleRecommendations) {
+          result.styleRecommendations = [];
+        }
+        break;
     }
   }
 
@@ -501,10 +618,45 @@ export function parseAndValidateResponse<T extends z.ZodTypeAny>(
 
 /**
  * Fix common JSON formatting issues in Gemini responses
+ * Handles truncated responses, malformed syntax, and common AI mistakes
  */
 function fixMalformedJSON(text: string): string {
+  let fixed = text.trim();
+
+  // Handle truncated JSON by closing open brackets/braces
+  const openBraces = (fixed.match(/{/g) || []).length;
+  const closeBraces = (fixed.match(/}/g) || []).length;
+  const openBrackets = (fixed.match(/\[/g) || []).length;
+  const closeBrackets = (fixed.match(/]/g) || []).length;
+
+  // If truncated, try to close the JSON properly
+  if (openBraces > closeBraces || openBrackets > closeBrackets) {
+    logger.debug("Attempting to fix truncated JSON", {
+      openBraces,
+      closeBraces,
+      openBrackets,
+      closeBrackets,
+    });
+
+    // Remove any trailing incomplete key-value pair
+    fixed = fixed.replace(/,\s*"[^"]*"?\s*:?\s*[^,}\]]*$/, "");
+    fixed = fixed.replace(/,\s*$/, "");
+
+    // Close remaining open brackets/braces
+    const bracesToClose = openBraces - closeBraces;
+    const bracketsToClose = openBrackets - closeBrackets;
+
+    // Close arrays first, then objects (reverse nesting order)
+    for (let i = 0; i < bracketsToClose; i++) {
+      fixed += "]";
+    }
+    for (let i = 0; i < bracesToClose; i++) {
+      fixed += "}";
+    }
+  }
+
   // Remove trailing commas before closing brackets/braces
-  let fixed = text.replace(/,(\s*[}\]])/g, "$1");
+  fixed = fixed.replace(/,(\s*[}\]])/g, "$1");
 
   // Fix unquoted keys (common in some AI responses)
   fixed = fixed.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
