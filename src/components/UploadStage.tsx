@@ -20,6 +20,7 @@ interface UploadStageProps {
   analyzeProgress?: number;
   onTranscribe?: () => void;
   isTranscribing?: boolean;
+  transcriptionComplete?: boolean;
   onYouTubeDownload?: (url: string) => void;
   isDownloading?: boolean;
   downloadProgress?: number;
@@ -42,6 +43,7 @@ export function UploadStage({
   analyzeProgress = 0,
   onTranscribe,
   isTranscribing = false,
+  transcriptionComplete = false,
   onYouTubeDownload,
   isDownloading = false,
   downloadProgress = 0,
@@ -529,32 +531,66 @@ export function UploadStage({
                   </button>
                 )}
 
-                {/* Transcribe Button */}
-                {uploadComplete && !isTranscribing && onTranscribe && (
+                {/* Transcribe & Analyze Button */}
+                {uploadComplete && !isTranscribing && !transcriptionComplete && onTranscribe && (
                   <button
                     onClick={onTranscribe}
-                    className="w-full rounded-lg bg-green-600 px-6 py-3 font-medium text-white transition-colors hover:bg-green-700"
+                    className="group relative w-full overflow-hidden rounded-lg bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-3 font-medium text-white transition-all hover:from-green-500 hover:to-emerald-500"
                   >
-                    Transcribe Audio
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                      </svg>
+                      Transcribe & Analyze
+                    </span>
+                    <span className="mt-1 block text-xs text-green-200/80">Audio transcription + retention analysis</span>
                   </button>
                 )}
 
-                {/* Transcription Progress Bar */}
+                {/* Completion State */}
+                {transcriptionComplete && !isTranscribing && (
+                  <motion.div
+                    className="flex items-center gap-3 rounded-lg border border-green-500/30 bg-green-900/20 px-4 py-3"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  >
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-600">
+                      <Check className="h-4 w-4 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-green-400">Analysis Complete</p>
+                      <p className="text-xs text-green-300/70">Transcription & retention ready</p>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Transcription + Retention Progress */}
                 {isTranscribing && (
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Transcribing audio...</span>
-                      <span className="font-medium text-white">Processing</span>
+                  <div className="space-y-4 rounded-lg border border-gray-600 bg-gray-700/30 p-4">
+                    {/* Step indicators */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-600">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-white">Transcribing audio...</p>
+                        <p className="text-xs text-gray-400">Extracting speech from video</p>
+                      </div>
                     </div>
-                    <div className="h-2 w-full rounded-full bg-gray-700">
-                      <div
-                        className="h-2 animate-pulse rounded-full bg-green-600"
-                        style={{ width: "60%" }}
-                      />
+                    <div className="flex items-center gap-3 opacity-50">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-500 bg-gray-700">
+                        <span className="text-xs text-gray-400">2</span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-400">Retention analysis</p>
+                        <p className="text-xs text-gray-500">Pending</p>
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-500">
-                      Deepgram is transcribing your video. This may take a moment...
-                    </p>
+                    {/* Progress bar */}
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-600">
+                      <div className="h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-green-500 to-emerald-400" />
+                    </div>
                   </div>
                 )}
 

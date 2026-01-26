@@ -3,6 +3,8 @@
 import { Check, HelpCircle, Loader2, Settings as SettingsIcon, X } from "lucide-react";
 import { useState } from "react";
 
+type ApiTier = "free" | "pay_as_you_go" | "enterprise";
+
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -12,6 +14,8 @@ interface SettingsModalProps {
   onDeepgramKeyChange: (key: string) => void;
   onGeminiKeyChange: (key: string) => void;
   onHuggingfaceKeyChange: (key: string) => void;
+  apiTier?: ApiTier;
+  onApiTierChange?: (tier: ApiTier) => void;
 }
 
 export function SettingsModal({
@@ -23,6 +27,8 @@ export function SettingsModal({
   onDeepgramKeyChange,
   onGeminiKeyChange,
   onHuggingfaceKeyChange,
+  apiTier = "pay_as_you_go",
+  onApiTierChange,
 }: SettingsModalProps) {
   const [testingDeepgram, setTestingDeepgram] = useState(false);
   const [testingGemini, setTestingGemini] = useState(false);
@@ -327,6 +333,27 @@ export function SettingsModal({
                 </li>
               </ul>
             </details>
+          </div>
+
+          {/* Analysis Speed / API Tier */}
+          <div className="mb-4">
+            <label className="mb-1.5 block text-sm font-medium text-gray-300">
+              Analysis Speed
+            </label>
+            <select
+              value={apiTier}
+              onChange={(e) => onApiTierChange?.(e.target.value as ApiTier)}
+              className="w-full rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-white focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="free">🐢 Conservative (Sequential) - Free tier API</option>
+              <option value="pay_as_you_go">⚡ Fast (3 Parallel) - Pay-as-you-go API</option>
+              <option value="enterprise">🚀 Maximum Speed (8 Parallel) - High-rate API</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              {apiTier === "free" && "Analyzes categories one at a time. Best for free-tier Gemini API keys (5 req/min)."}
+              {apiTier === "pay_as_you_go" && "Runs 3 categories in parallel. Recommended for paid Gemini API keys."}
+              {apiTier === "enterprise" && "Runs all 8 categories simultaneously. Fastest but requires high rate limits."}
+            </p>
           </div>
 
           {/* Status Indicators - Inline */}

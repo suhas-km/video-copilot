@@ -1,11 +1,13 @@
 /**
  * API Route: Generate AI Insights
  * Server-side insights generation using Gemini
+ * 
+ * OPTIMIZATION: Accepts pre-computed analysis results to avoid duplicate Gemini calls
  */
 
 import { geminiService } from "@/lib/ai/gemini-service";
 import { insightsService } from "@/lib/insights/insights-service";
-import { RetentionAnalysis, TranscriptionResult } from "@/types";
+import { AnalysisResult, RetentionAnalysis, TranscriptionResult } from "@/types";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -26,7 +28,8 @@ export async function POST(request: NextRequest) {
       videoId, 
       geminiApiKey, 
       keyframes,
-      originalMetadata 
+      originalMetadata,
+      analysisResult, // NEW: Pre-computed analysis to avoid duplicate calls
     } = body as {
       transcription: TranscriptionResult;
       retentionAnalysis: RetentionAnalysis;
@@ -38,6 +41,7 @@ export async function POST(request: NextRequest) {
         mimeType: string;
       }>;
       originalMetadata?: OriginalMetadata;
+      analysisResult?: AnalysisResult;
     };
 
     if (!transcription || !retentionAnalysis || !videoId) {
@@ -59,7 +63,8 @@ export async function POST(request: NextRequest) {
       videoId,
       undefined, // onProgress
       keyframes, // Pass keyframes for visual analysis
-      originalMetadata // Pass original metadata for delta calculation
+      originalMetadata, // Pass original metadata for delta calculation
+      analysisResult // Pass pre-computed analysis to skip duplicate Gemini calls
     );
 
     return NextResponse.json(insights);

@@ -51,12 +51,13 @@ export const apiKeySchema = z
 
 /**
  * Base64 encoded data validation
+ * Note: We avoid regex validation on large strings to prevent stack overflow.
+ * Invalid base64 will fail naturally during Buffer.from() decode.
  */
 export const base64Schema = z
   .string()
   .min(1, "Data is required")
-  .max(100 * 1024 * 1024, "Data is too large (max 100MB)")
-  .regex(/^[A-Za-z0-9+/=]+$/, "Invalid base64 encoding");
+  .max(100 * 1024 * 1024, "Data is too large (max 100MB)");
 
 // ============================================================================
 // API Route Schemas

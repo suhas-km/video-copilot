@@ -12,6 +12,36 @@
 // ============================================================================
 
 /**
+ * API Tier configuration for rate limiting
+ */
+export type ApiTier = "free" | "pay_as_you_go" | "enterprise";
+
+export const API_TIER_CONFIG: Record<ApiTier, {
+  /** Requests per minute limit */
+  rpm: number;
+  /** Minimum delay between requests (ms) */
+  delayMs: number;
+  /** Max parallel requests */
+  maxParallel: number;
+}> = {
+  free: {
+    rpm: 5,
+    delayMs: 12_500, // 12.5s = 5 RPM
+    maxParallel: 1,  // Sequential only
+  },
+  pay_as_you_go: {
+    rpm: 60,
+    delayMs: 1_000, // 1s = 60 RPM
+    maxParallel: 3,  // Can run 3 in parallel
+  },
+  enterprise: {
+    rpm: 1000,
+    delayMs: 100, // 100ms = 600 RPM (conservative)
+    maxParallel: 8,  // Can run all categories in parallel
+  },
+};
+
+/**
  * Default Gemini API configuration
  * 
  * Free tier limits (as of Jan 2026):
@@ -54,7 +84,30 @@ export const GEMINI_CONFIG = {
 
   /** Rate limit: minimum delay between requests (ms) - 12s = 5 RPM */
   RATE_LIMIT_DELAY_MS: 12_500,
+
+  /** Default API tier - pay_as_you_go for faster parallel execution */
+  DEFAULT_API_TIER: "pay_as_you_go" as ApiTier,
 } as const;
+
+/**
+ * Categories that don't require keyframes (can run in parallel)
+ */
+export const TEXT_ONLY_CATEGORIES = [
+  "scripting",
+  "audio_design", 
+  "seo_metadata",
+  "tools_workflows",
+] as const;
+
+/**
+ * Categories that require keyframes (must include visual data)
+ */
+export const VISUAL_CATEGORIES = [
+  "core_concepts",
+  "visual_editing",
+  "style_guides",
+  "checklists",
+] as const;
 
 // ============================================================================
 // Analysis Configuration

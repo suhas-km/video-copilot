@@ -7,6 +7,7 @@
 import { v4 as uuidv4 } from "uuid";
 import {
   AIInsights,
+  AnalysisResult,
   AppError,
   AppErrorType,
   ImprovementBreakdown,
@@ -56,6 +57,7 @@ export class InsightsService {
    * @param onProgress - Optional progress callback
    * @param keyframes - Optional keyframes for visual analysis
    * @param originalMetadata - Optional original video metadata for delta calculation
+   * @param preComputedAnalysis - Optional pre-computed analysis to skip duplicate Gemini calls
    */
   public async generateInsights(
     transcription: TranscriptionResult,
@@ -63,7 +65,8 @@ export class InsightsService {
     videoId: string,
     onProgress?: ProgressCallback,
     keyframes?: Array<{ timestamp: number; base64Data: string; mimeType: string }>,
-    originalMetadata?: { title?: string; description?: string; tags?: string[] }
+    originalMetadata?: { title?: string; description?: string; tags?: string[] },
+    preComputedAnalysis?: AnalysisResult
   ): Promise<AIInsights> {
     const startTime = Date.now();
     logger.info("Generating AI insights", { videoId });
@@ -73,35 +76,26 @@ export class InsightsService {
         onProgress(0, "Analyzing content for insights...");
       }
 
-      // Generate script suggestions
+      // Generate script suggestions (reuse precomputed if available)
       if (onProgress) {
         onProgress(20, "Generating script suggestions...");
       }
-      const scriptSuggestions = await this.generateScriptSuggestions(
-        transcription,
-        retentionAnalysis,
-        keyframes
-      );
+      const scriptSuggestions = this.extractScriptSuggestions(preComputedAnalysis) 
+        || await this.generateScriptSuggestions(transcription, retentionAnalysis, keyframes);
 
-      // Generate visual recommendations
+      // Generate visual recommendations (reuse precomputed if available)
       if (onProgress) {
         onProgress(40, "Generating visual recommendations...");
       }
-      const visualRecommendations = await this.generateVisualRecommendations(
-        transcription,
-        retentionAnalysis,
-        keyframes
-      );
+      const visualRecommendations = this.extractVisualRecommendations(preComputedAnalysis)
+        || await this.generateVisualRecommendations(transcription, retentionAnalysis, keyframes);
 
-      // Generate pacing suggestions
+      // Generate pacing suggestions (reuse precomputed if available)
       if (onProgress) {
         onProgress(60, "Generating pacing suggestions...");
       }
-      const pacingSuggestions = await this.generatePacingSuggestions(
-        transcription,
-        retentionAnalysis,
-        keyframes
-      );
+      const pacingSuggestions = this.extractPacingSuggestions(preComputedAnalysis)
+        || await this.generatePacingSuggestions(transcription, retentionAnalysis, keyframes);
 
       // Generate SEO metadata
       if (onProgress) {
@@ -173,6 +167,87 @@ export class InsightsService {
       );
     }
   }
+
+  // ==========================================================================
+  // Extraction Methods (reuse pre-computed analysis results)
+  // ==========================================================================
+
+  /**
+   * Extract script suggestions from pre-computed analysis
+   * Returns null if no valid data available (falls back to Gemini call)
+   */
+  private extractScriptSuggestions(analysis?: AnalysisResult): ScriptSuggestion[] | null {
+    if (!analysis?.categoryResults) return null;
+    
+    const scriptingResult = analysis.categoryResults.scripting as { issues?: Array<{ category: string; title: string; recommendation: string; timestamp: { start: number; end: number }; confidence: number }> } | null;
+    if (!scriptingResult?.issues?.length) return null;
+
+    logger.info("Reusing pre-computed scripting analysis (skipping Gemini call)");
+    
+    return scriptingResult.issues
+      .filter((issue) => issue.category === "scripting")
+      .slice(0, 5)
+      .map((issue, index) => ({
+        type: "modify" as const,
+        description: `${issue.title}: ${issue.recommendation}`,
+        start: issue.timestamp.start,
+        end: issue.timestamp.end,
+        priority: Math.min(index + 1, 5),
+        expectedImpact: issue.confidence * 0.6,
+      }));
+  }
+
+  /**
+   * Extract visual recommendations from pre-computed analysis
+   */
+  private extractVisualRecommendations(analysis?: AnalysisResult): VisualRecommendation[] | null {
+    if (!analysis?.categoryResults) return null;
+    
+    const visualResult = analysis.categoryResults.visual_editing as { issues?: Array<{ category: string; title: string; recommendation: string; timestamp: { start: number; end: number }; confidence: number }> } | null;
+    if (!visualResult?.issues?.length) return null;
+
+    logger.info("Reusing pre-computed visual_editing analysis (skipping Gemini call)");
+    
+    return visualResult.issues
+      .filter((issue) => issue.category === "visual_editing")
+      .slice(0, 5)
+      .map((issue, index) => ({
+        type: "overlay" as const,
+        description: `${issue.title}: ${issue.recommendation}`,
+        start: issue.timestamp.start,
+        end: issue.timestamp.end,
+        priority: Math.min(index + 1, 5),
+        expectedImpact: issue.confidence * 0.5,
+      }));
+  }
+
+  /**
+   * Extract pacing suggestions from pre-computed analysis
+   */
+  private extractPacingSuggestions(analysis?: AnalysisResult): PacingSuggestion[] | null {
+    if (!analysis?.categoryResults) return null;
+    
+    const coreResult = analysis.categoryResults.core_concepts as { issues?: Array<{ category: string; title: string; recommendation: string; timestamp: { start: number; end: number }; confidence: number }> } | null;
+    if (!coreResult?.issues?.length) return null;
+
+    logger.info("Reusing pre-computed core_concepts analysis (skipping Gemini call)");
+    
+    return coreResult.issues
+      .filter((issue) => issue.category === "core_concepts")
+      .slice(0, 5)
+      .map((issue, index) => ({
+        type: "keep" as const,
+        description: `${issue.title}: ${issue.recommendation}`,
+        start: issue.timestamp.start,
+        end: issue.timestamp.end,
+        priority: Math.min(index + 1, 5),
+        expectedImpact: issue.confidence * 0.5,
+      }));
+  }
+
+  // ==========================================================================
+  // Generation Methods (Gemini API calls - fallback when no pre-computed data)
+  // ==========================================================================
 
   /**
    * Generate script suggestions

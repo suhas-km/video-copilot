@@ -112,6 +112,111 @@ export function createJsonGenerationConfig<T extends z.ZodTypeAny>(
 // ============================================================================
 
 /**
+ * Detect if an array is a flat key-value sequence that needs reconstruction
+ * Pattern: ["id", "value1", "timestamp", "start", 45, "end", 55, "category", "scripting", ...]
+ * These are object properties flattened into an array
+ */
+function isFlatKeyValueArray(arr: unknown[]): boolean {
+  if (arr.length < 2) return false;
+  
+  // Check if first element is a known key name (string) and not an object
+  const knownKeys = ["id", "timestamp", "category", "severity", "title", "description", "issue", "recommendation", "confidence", "start", "end"];
+  
+  // If array starts with a known key followed by a non-object value, it's likely flat
+  if (typeof arr[0] === "string" && knownKeys.includes(arr[0].toLowerCase())) {
+    // Verify it's not already objects
+    const hasObjects = arr.some(item => typeof item === "object" && item !== null);
+    if (!hasObjects) return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Reconstruct objects from a flat key-value array
+ * Input: ["id", "abc", "timestamp", "start", 45, "end", 55, "category", "scripting", "id", "xyz", ...]
+ * Output: [{id: "abc", timestamp: {start: 45, end: 55}, category: "scripting"}, {id: "xyz", ...}]
+ */
+function reconstructObjectsFromFlatArray(arr: unknown[]): Record<string, unknown>[] {
+  const objects: Record<string, unknown>[] = [];
+  let currentObj: Record<string, unknown> = {};
+  let i = 0;
+  
+  const objectBoundaryKeys = ["id"]; // Keys that indicate start of a new object
+  
+  while (i < arr.length) {
+    const key = arr[i];
+    
+    if (typeof key !== "string") {
+      i++;
+      continue;
+    }
+    
+    const keyLower = key.toLowerCase();
+    
+    // Check if this is a new object boundary
+    if (objectBoundaryKeys.includes(keyLower) && Object.keys(currentObj).length > 0) {
+      objects.push(currentObj);
+      currentObj = {};
+    }
+    
+    // Handle nested objects like timestamp: {start, end}
+    if (keyLower === "timestamp" && i + 4 < arr.length) {
+      const nextKey = arr[i + 1];
+      if (nextKey === "start" || nextKey === "end") {
+        // Reconstruct nested timestamp object
+        const timestamp: Record<string, number> = { start: 0, end: 0 };
+        let j = i + 1;
+        while (j + 1 < arr.length && (arr[j] === "start" || arr[j] === "end")) {
+          const subKey = arr[j] as string;
+          const subVal = arr[j + 1];
+          if (typeof subVal === "number") {
+            timestamp[subKey] = subVal;
+          }
+          j += 2;
+        }
+        currentObj["timestamp"] = timestamp;
+        i = j;
+        continue;
+      }
+    }
+    
+    // Standard key-value pair
+    if (i + 1 < arr.length) {
+      const value = arr[i + 1];
+      // Skip if value is another key name (indicates missing value)
+      if (typeof value === "string" && ["id", "timestamp", "category", "severity", "title", "description", "issue", "recommendation", "confidence"].includes(value.toLowerCase())) {
+        currentObj[keyLower] = "";
+        i++;
+      } else {
+        currentObj[keyLower] = value;
+        i += 2;
+      }
+    } else {
+      i++;
+    }
+  }
+  
+  // Don't forget the last object
+  if (Object.keys(currentObj).length > 0) {
+    objects.push(currentObj);
+  }
+  
+  // Ensure each object has required fields with defaults
+  return objects.map(obj => ({
+    id: obj.id || `issue-${Math.random().toString(36).substring(7)}`,
+    timestamp: obj.timestamp || { start: 0, end: 0 },
+    category: obj.category || "core_concepts",
+    severity: obj.severity || "medium",
+    title: obj.title || "Issue",
+    description: obj.description || "",
+    issue: obj.issue || "",
+    recommendation: obj.recommendation || "",
+    confidence: typeof obj.confidence === "number" ? obj.confidence : 0.7,
+  }));
+}
+
+/**
  * Normalize Gemini response by fixing common schema violations
  * This handles cases where Gemini returns:
  * - JSON strings in object arrays: ["{\"id\": \"...\"}"] -> [{"id": "..."}]
@@ -167,20 +272,27 @@ function normalizeGeminiResponse(parsed: unknown): unknown {
       ];
 
       if (objectArrayFields.includes(key)) {
-        // Parse JSON strings and filter invalid values
-        result[key] = value
-          .map((item) => {
-            if (typeof item === "string") {
-              try {
-                return JSON.parse(item);
-              } catch {
-                // If parsing fails, return null to be filtered
-                return null;
+        // Check if this is a flat key-value array that needs reconstruction
+        // Pattern: ["id", "value1", "timestamp", "start", 45, "end", 55, ...]
+        if (isFlatKeyValueArray(value)) {
+          logger.debug("Reconstructing flat key-value array", { field: key, length: value.length });
+          result[key] = reconstructObjectsFromFlatArray(value);
+        } else {
+          // Parse JSON strings and filter invalid values
+          result[key] = value
+            .map((item) => {
+              if (typeof item === "string") {
+                try {
+                  return JSON.parse(item);
+                } catch {
+                  // If parsing fails, return null to be filtered
+                  return null;
+                }
               }
-            }
-            return item;
-          })
-          .filter((item) => item !== null && item !== -1 && typeof item === "object");
+              return item;
+            })
+            .filter((item) => item !== null && item !== -1 && typeof item === "object");
+        }
       } else {
         result[key] = normalizeGeminiResponse(value);
       }
@@ -219,6 +331,17 @@ function normalizeGeminiResponse(parsed: unknown): unknown {
   if ("workflowMetrics" in result && Array.isArray(result.workflowMetrics)) {
     logger.debug("Converting workflowMetrics from array to null");
     result.workflowMetrics = null;
+  }
+
+  // Fix scriptMetrics: Gemini sometimes returns array instead of expected object
+  if ("scriptMetrics" in result && Array.isArray(result.scriptMetrics)) {
+    logger.debug("Converting scriptMetrics from array to default object");
+    result.scriptMetrics = {
+      hookStrength: 0.7,
+      pacing: 0.7,
+      clarity: 0.7,
+      callToAction: 0.7,
+    };
   }
 
   // Fix toolRecommendations: ensure array items are objects
@@ -617,11 +740,135 @@ export function parseAndValidateResponse<T extends z.ZodTypeAny>(
 }
 
 /**
+ * Remove duplicate JSON keys from a string
+ * Handles nested arrays/objects by tracking bracket depth
+ * Keeps only the first occurrence of the key
+ */
+function removeDuplicateJsonKeys(text: string, keyName: string): string {
+  // Find all occurrences of the key
+  const keyPattern = new RegExp(`"${keyName}"\\s*:\\s*`, "g");
+  const matches: { index: number; length: number }[] = [];
+  
+  let match;
+  while ((match = keyPattern.exec(text)) !== null) {
+    matches.push({ index: match.index, length: match[0].length });
+  }
+  
+  // If 0 or 1 occurrence, nothing to dedupe
+  if (matches.length <= 1) {
+    return text;
+  }
+  
+  logger.debug("Found duplicate JSON keys", { keyName, count: matches.length });
+  
+  // For each duplicate (skip first), find the value extent and remove
+  // We process from end to start to preserve indices
+  let result = text;
+  for (let i = matches.length - 1; i >= 1; i--) {
+    const keyMatch = matches[i];
+    if (!keyMatch) continue;
+    
+    const valueStart = keyMatch.index + keyMatch.length;
+    const valueEnd = findJsonValueEnd(result, valueStart);
+    
+    if (valueEnd > valueStart) {
+      // Remove from the comma before the key (if exists) to the end of value
+      let removeStart = keyMatch.index;
+      // Look backwards for a comma
+      const beforeKey = result.substring(0, removeStart).trimEnd();
+      if (beforeKey.endsWith(",")) {
+        removeStart = beforeKey.lastIndexOf(",");
+      }
+      
+      // Also remove trailing comma if exists
+      let removeEnd = valueEnd;
+      const afterValue = result.substring(valueEnd).trimStart();
+      if (afterValue.startsWith(",")) {
+        removeEnd = valueEnd + result.substring(valueEnd).indexOf(",") + 1;
+      }
+      
+      result = result.substring(0, removeStart) + result.substring(removeEnd);
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Find the end index of a JSON value starting at the given position
+ * Handles nested arrays and objects by tracking bracket depth
+ */
+function findJsonValueEnd(text: string, startIndex: number): number {
+  const firstChar = text[startIndex];
+  
+  if (firstChar === "[" || firstChar === "{") {
+    // Track bracket depth
+    const openBracket = firstChar;
+    const closeBracket = firstChar === "[" ? "]" : "}";
+    let depth = 1;
+    let i = startIndex + 1;
+    let inString = false;
+    let escaped = false;
+    
+    while (i < text.length && depth > 0) {
+      const char = text[i];
+      
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = !inString;
+      } else if (!inString) {
+        if (char === openBracket) {
+          depth++;
+        } else if (char === closeBracket) {
+          depth--;
+        }
+      }
+      i++;
+    }
+    return i;
+  } else if (firstChar === '"') {
+    // String value - find closing quote
+    let i = startIndex + 1;
+    let escaped = false;
+    while (i < text.length) {
+      const char = text[i];
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        return i + 1;
+      }
+      i++;
+    }
+    return i;
+  } else {
+    // Primitive value (number, boolean, null) - find next comma, bracket, or brace
+    let i = startIndex;
+    while (i < text.length && !/[,\]}]/.test(text[i]!)) {
+      i++;
+    }
+    return i;
+  }
+}
+
+/**
  * Fix common JSON formatting issues in Gemini responses
- * Handles truncated responses, malformed syntax, and common AI mistakes
+ * Handles truncated responses, malformed syntax, duplicate keys, and common AI mistakes
  */
 function fixMalformedJSON(text: string): string {
   let fixed = text.trim();
+
+  // CRITICAL FIX: Handle duplicate JSON keys (Gemini sometimes outputs multiple "issues" keys)
+  // This happens when Gemini "stutters" and outputs the same key multiple times
+  // We need to remove all but the first occurrence of each duplicated key
+  fixed = removeDuplicateJsonKeys(fixed, "issues");
+  fixed = removeDuplicateJsonKeys(fixed, "strengths");
+  fixed = removeDuplicateJsonKeys(fixed, "priorityActions");
+  fixed = removeDuplicateJsonKeys(fixed, "failedItems");
 
   // Handle truncated JSON by closing open brackets/braces
   const openBraces = (fixed.match(/{/g) || []).length;

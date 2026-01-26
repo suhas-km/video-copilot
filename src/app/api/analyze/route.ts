@@ -197,10 +197,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize Gemini service with provided API key
+    // Get API tier for parallel execution (optional, defaults to pay_as_you_go)
+    const apiTier = formData.get("apiTier") as "free" | "pay_as_you_go" | "enterprise" | null;
+
+    // Initialize Gemini service with provided API key and tier
     try {
       const { geminiService } = await import("../../../lib/ai/gemini-service");
-      geminiService.initialize({ apiKey: geminiApiKey });
+      geminiService.initialize({ 
+        apiKey: geminiApiKey,
+        apiTier: apiTier || "pay_as_you_go",
+      });
     } catch (error) {
       console.error("Failed to initialize Gemini service:", error);
       return NextResponse.json(

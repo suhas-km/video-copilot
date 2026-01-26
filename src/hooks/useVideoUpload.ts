@@ -214,7 +214,8 @@ export function useVideoUpload(options: UseVideoUploadOptions = {}): UseVideoUpl
 
         setVideo(file, session);
         setUploadComplete(true);
-        setStage("results");
+        // Stay on upload stage to show video preview (same as file upload flow)
+        // User will click "Transcribe" to proceed
 
         clientLogger.info(`YouTube download complete: ${filename}`);
         onUploadComplete?.(session);
@@ -228,7 +229,7 @@ export function useVideoUpload(options: UseVideoUploadOptions = {}): UseVideoUpl
         setDownloadProgress(0);
       }
     },
-    [setVideo, setStage, onUploadComplete, onError]
+    [setVideo, onUploadComplete, onError]
   );
 
   const handleReset = useCallback(() => {

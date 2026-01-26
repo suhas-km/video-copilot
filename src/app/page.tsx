@@ -65,6 +65,7 @@ export default function Home() {
   const [deepgramApiKey, setDeepgramApiKey] = useState<string>("");
   const [geminiApiKey, setGeminiApiKey] = useState<string>("");
   const [huggingfaceApiKey, setHuggingfaceApiKey] = useState<string>("");
+  const [apiTier, setApiTier] = useState<"free" | "pay_as_you_go" | "enterprise">("pay_as_you_go");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [dbInitialized, setDbInitialized] = useState(false);
   const [historyStatus, setHistoryStatus] = useState<HistoryStatus>({
@@ -87,6 +88,10 @@ export default function Home() {
       }
       if (savedHuggingfaceKey) {
         setHuggingfaceApiKey(savedHuggingfaceKey);
+      }
+      const savedApiTier = localStorage.getItem("api_tier") as "free" | "pay_as_you_go" | "enterprise" | null;
+      if (savedApiTier) {
+        setApiTier(savedApiTier);
       }
     }
   }, []);
@@ -121,6 +126,13 @@ export default function Home() {
       } else {
         localStorage.removeItem("huggingface_api_key");
       }
+    }
+  }, []);
+
+  const handleApiTierChange = useCallback((tier: "free" | "pay_as_you_go" | "enterprise") => {
+    setApiTier(tier);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("api_tier", tier);
     }
   }, []);
 
@@ -240,6 +252,7 @@ export default function Home() {
   } = useAnalysis({
     geminiApiKey,
     deepgramApiKey,
+    apiTier,
     onComplete: () => {
       clientLogger.info("Analysis complete");
       setActiveTab("retention");
@@ -532,6 +545,7 @@ export default function Home() {
                   analyzeProgress={analysisProgress}
                   onTranscribe={uploadComplete ? handleTranscribe : undefined}
                   isTranscribing={isTranscribing}
+                  transcriptionComplete={!!transcription}
                   onYouTubeDownload={handleYouTubeDownload}
                   isDownloading={isDownloading}
                   downloadProgress={downloadProgress}
@@ -799,6 +813,8 @@ export default function Home() {
         onDeepgramKeyChange={handleDeepgramKeyChange}
         onGeminiKeyChange={handleGeminiKeyChange}
         onHuggingfaceKeyChange={handleHuggingfaceKeyChange}
+        apiTier={apiTier}
+        onApiTierChange={handleApiTierChange}
       />
     </main>
   );
