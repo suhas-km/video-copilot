@@ -1,0 +1,391 @@
+"use client";
+
+import { Check, HelpCircle, Loader2, Settings as SettingsIcon, X } from "lucide-react";
+import { useState } from "react";
+
+interface SettingsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  deepgramApiKey: string;
+  geminiApiKey: string;
+  huggingfaceApiKey: string;
+  onDeepgramKeyChange: (key: string) => void;
+  onGeminiKeyChange: (key: string) => void;
+  onHuggingfaceKeyChange: (key: string) => void;
+}
+
+export function SettingsModal({
+  isOpen,
+  onClose,
+  deepgramApiKey,
+  geminiApiKey,
+  huggingfaceApiKey,
+  onDeepgramKeyChange,
+  onGeminiKeyChange,
+  onHuggingfaceKeyChange,
+}: SettingsModalProps) {
+  const [testingDeepgram, setTestingDeepgram] = useState(false);
+  const [testingGemini, setTestingGemini] = useState(false);
+  const [testingHuggingface, setTestingHuggingface] = useState(false);
+  const [deepgramStatus, setDeepgramStatus] = useState<"idle" | "success" | "error">("idle");
+  const [geminiStatus, setGeminiStatus] = useState<"idle" | "success" | "error">("idle");
+  const [huggingfaceStatus, setHuggingfaceStatus] = useState<"idle" | "success" | "error">("idle");
+  const [deepgramError, setDeepgramError] = useState("");
+  const [geminiError, setGeminiError] = useState("");
+  const [huggingfaceError, setHuggingfaceError] = useState("");
+
+  const testDeepgramKey = async () => {
+    if (!deepgramApiKey) {
+      setDeepgramError("Please enter an API key first");
+      return;
+    }
+
+    setTestingDeepgram(true);
+    setDeepgramStatus("idle");
+    setDeepgramError("");
+
+    try {
+      const response = await fetch("/api/deepgram/validate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ apiKey: deepgramApiKey }),
+      });
+
+      const data = (await response.json()) as { valid?: boolean; error?: string };
+
+      if (response.ok && data.valid) {
+        setDeepgramStatus("success");
+      } else {
+        setDeepgramError(data.error || "Invalid API key");
+        setDeepgramStatus("error");
+      }
+    } catch (err) {
+      setDeepgramError("Failed to validate API key");
+      setDeepgramStatus("error");
+    } finally {
+      setTestingDeepgram(false);
+    }
+  };
+
+  const testGeminiKey = async () => {
+    if (!geminiApiKey) {
+      setGeminiError("Please enter an API key first");
+      return;
+    }
+
+    setTestingGemini(true);
+    setGeminiStatus("idle");
+    setGeminiError("");
+
+    try {
+      const response = await fetch("/api/gemini/validate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ apiKey: geminiApiKey }),
+      });
+
+      const data = (await response.json()) as { valid?: boolean; error?: string };
+
+      if (response.ok && data.valid) {
+        setGeminiStatus("success");
+      } else {
+        setGeminiError(data.error || "Invalid API key");
+        setGeminiStatus("error");
+      }
+    } catch (err) {
+      setGeminiError("Failed to validate API key");
+      setGeminiStatus("error");
+    } finally {
+      setTestingGemini(false);
+    }
+  };
+
+  const testHuggingfaceKey = async () => {
+    if (!huggingfaceApiKey) {
+      setHuggingfaceError("Please enter an API token first");
+      return;
+    }
+
+    setTestingHuggingface(true);
+    setHuggingfaceStatus("idle");
+    setHuggingfaceError("");
+
+    try {
+      const response = await fetch("/api/huggingface/validate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ apiKey: huggingfaceApiKey }),
+      });
+
+      const data = (await response.json()) as { valid?: boolean; error?: string };
+
+      if (response.ok && data.valid) {
+        setHuggingfaceStatus("success");
+      } else {
+        setHuggingfaceError(data.error || "Invalid API token");
+        setHuggingfaceStatus("error");
+      }
+    } catch (err) {
+      setHuggingfaceError("Failed to validate API token");
+      setHuggingfaceStatus("error");
+    } finally {
+      setTestingHuggingface(false);
+    }
+  };
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Modal */}
+      <div className="relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-gray-700 bg-gray-800 shadow-2xl">
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-700 px-5 py-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600/20">
+              <SettingsIcon className="h-4 w-4 text-blue-400" />
+            </div>
+            <h2 className="text-base font-semibold text-white">Configure your API keys</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+
+          {/* Deepgram API Key */}
+          <div className="mb-4">
+            <label className="mb-1.5 block text-sm font-medium text-gray-300">Deepgram API Key</label>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={deepgramApiKey}
+                onChange={(e) => {
+                  onDeepgramKeyChange(e.target.value);
+                  setDeepgramStatus("idle");
+                  setDeepgramError("");
+                }}
+                placeholder="Enter your Deepgram API key"
+                className="flex-1 rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={testDeepgramKey}
+                disabled={!deepgramApiKey || testingDeepgram}
+                className="rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-gray-300 transition-all hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {testingDeepgram ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : deepgramStatus === "success" ? (
+                  <Check className="h-4 w-4 text-green-500" />
+                ) : (
+                  "Test"
+                )}
+              </button>
+            </div>
+            {deepgramError && <p className="mt-1 text-xs text-red-400">{deepgramError}</p>}
+            {deepgramStatus === "success" && (
+              <p className="mt-1 text-xs text-green-400">API key is valid!</p>
+            )}
+            <p className="mt-1 text-xs text-gray-500">
+              Required for video transcription. Get your key from{" "}
+              <a
+                href="https://console.deepgram.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300"
+              >
+                Deepgram Console
+              </a>
+            </p>
+          </div>
+
+          {/* Gemini API Key */}
+          <div className="mb-4">
+            <label className="mb-1.5 block text-sm font-medium text-gray-300">Gemini API Key</label>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={geminiApiKey}
+                onChange={(e) => {
+                  onGeminiKeyChange(e.target.value);
+                  setGeminiStatus("idle");
+                  setGeminiError("");
+                }}
+                placeholder="Enter your Gemini API key"
+                className="flex-1 rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <button
+                onClick={testGeminiKey}
+                disabled={!geminiApiKey || testingGemini}
+                className="rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-gray-300 transition-all hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {testingGemini ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : geminiStatus === "success" ? (
+                  <Check className="h-4 w-4 text-green-500" />
+                ) : (
+                  "Test"
+                )}
+              </button>
+            </div>
+            {geminiError && <p className="mt-1 text-xs text-red-400">{geminiError}</p>}
+            {geminiStatus === "success" && (
+              <p className="mt-1 text-xs text-green-400">API key is valid!</p>
+            )}
+            <p className="mt-1 text-xs text-gray-500">
+              Required for video analysis and insights. Get your key from{" "}
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-purple-400 hover:text-purple-300"
+              >
+                Google AI Studio
+              </a>
+            </p>
+          </div>
+
+          {/* HuggingFace API Key */}
+          <div className="mb-4">
+            <label className="mb-1.5 block text-sm font-medium text-gray-300">
+              HuggingFace API Token
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={huggingfaceApiKey}
+                onChange={(e) => {
+                  onHuggingfaceKeyChange(e.target.value);
+                  setHuggingfaceStatus("idle");
+                  setHuggingfaceError("");
+                }}
+                placeholder="Enter your HuggingFace API token"
+                className="flex-1 rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              <button
+                onClick={testHuggingfaceKey}
+                disabled={!huggingfaceApiKey || testingHuggingface}
+                className="rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-gray-300 transition-all hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {testingHuggingface ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : huggingfaceStatus === "success" ? (
+                  <Check className="h-4 w-4 text-green-500" />
+                ) : (
+                  "Test"
+                )}
+              </button>
+            </div>
+            {huggingfaceError && <p className="mt-1 text-xs text-red-400">{huggingfaceError}</p>}
+            {huggingfaceStatus === "success" && (
+              <p className="mt-1 text-xs text-green-400">API token is valid!</p>
+            )}
+            <p className="mt-1 text-xs text-gray-500">
+              Required for thumbnail generation. Get your token from{" "}
+              <a
+                href="https://huggingface.co/settings/tokens?newKind=fine_grained&name=Video%20Copilot"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-orange-400 font-medium hover:text-orange-300 underline underline-offset-4 decoration-orange-400/30 transition-colors"
+              >
+                HuggingFace Settings
+              </a>
+            </p>
+            <details className="mt-2 rounded-lg border border-orange-500/20 bg-orange-500/5">
+              <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs font-medium text-orange-400">
+                <HelpCircle className="h-3.5 w-3.5" />
+                Required Permissions
+              </summary>
+              <ul className="space-y-1 px-3 pb-2.5 text-[11px] leading-relaxed text-gray-400">
+                <li className="flex items-start gap-1.5">
+                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-orange-400/50" />
+                  <span><strong className="text-gray-300">Token Type:</strong> Use &quot;Fine-grained&quot; for better security.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-orange-400/50" />
+                  <span><strong className="text-gray-300">Repositories:</strong> Read access to contents of all repos under your personal namespace and public gated repos.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-orange-400/50" />
+                  <span><strong className="text-gray-300">Inference:</strong> &quot;Make calls to Inference Providers&quot; and &quot;Make calls to your Inference Endpoints&quot;.</span>
+                </li>
+              </ul>
+            </details>
+          </div>
+
+          {/* Status Indicators - Inline */}
+          <div className="flex flex-wrap items-center gap-3 rounded-lg bg-gray-700/30 px-3 py-2">
+            <div className="flex items-center gap-1.5">
+              <div
+                className={`h-2 w-2 rounded-full ${
+                  deepgramStatus === "success"
+                    ? "bg-green-500"
+                    : deepgramStatus === "error"
+                      ? "bg-red-500"
+                      : deepgramApiKey
+                        ? "bg-green-500"
+                        : "bg-red-500"
+                }`}
+              />
+              <span className="text-xs text-gray-400">Deepgram</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div
+                className={`h-2 w-2 rounded-full ${
+                  geminiStatus === "success"
+                    ? "bg-green-500"
+                    : geminiStatus === "error"
+                      ? "bg-red-500"
+                      : geminiApiKey
+                        ? "bg-green-500"
+                        : "bg-red-500"
+                }`}
+              />
+              <span className="text-xs text-gray-400">Gemini</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div
+                className={`h-2 w-2 rounded-full ${
+                  huggingfaceStatus === "success"
+                    ? "bg-green-500"
+                    : huggingfaceStatus === "error"
+                      ? "bg-red-500"
+                      : huggingfaceApiKey
+                        ? "bg-green-500"
+                        : "bg-red-500"
+                }`}
+              />
+              <span className="text-xs text-gray-400">HuggingFace</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex shrink-0 justify-end border-t border-gray-700 px-5 py-3">
+          <button
+            onClick={onClose}
+            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
