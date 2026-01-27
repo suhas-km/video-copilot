@@ -302,7 +302,7 @@ async function runCategoryAnalysis<T extends z.ZodTypeAny>(
       signal: options.signal,
       context: { category, videoId: input.videoId },
       onRetry: options.onRetryMessage 
-        ? (info) => options.onRetryMessage!(info.message)
+        ? (info) => options.onRetryMessage?.(info.message)
         : undefined,
     }
   );

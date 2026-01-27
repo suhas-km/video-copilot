@@ -14,6 +14,7 @@ import { clientLogger } from "@/lib/client-logger";
 import { browserHistoryService } from "@/lib/database/browser-history-service";
 import { useSessionStore } from "@/lib/stores/session-store";
 import type { AIInsights, AnalysisResult, RetentionAnalysis, TranscriptionResult } from "@/types";
+
 import { useCallback, useState } from "react";
 
 // ============================================================================
@@ -26,9 +27,12 @@ interface AnalysisProgress {
   message: string;
 }
 
+type ApiTier = "free" | "pay_as_you_go" | "enterprise";
+
 interface UseAnalysisOptions {
   geminiApiKey?: string;
   deepgramApiKey?: string;
+  apiTier?: ApiTier;
   onComplete?: (result: AnalysisResult) => void;
   onError?: (error: string) => void;
   onProgress?: (progress: AnalysisProgress) => void;
@@ -60,7 +64,8 @@ const generateInsights = async (
   videoId: string,
   geminiApiKey?: string,
   keyframes?: Array<{ timestamp: number; base64Data: string; mimeType: string }>,
-  originalMetadata?: { title?: string; description?: string; tags?: string[] }
+  originalMetadata?: { title?: string; description?: string; tags?: string[] },
+  analysisResult?: AnalysisResult // Pass pre-computed analysis to skip duplicate Gemini calls
 ): Promise<AIInsights> => {
   const response = await fetch("/api/insights", {
     method: "POST",
@@ -72,6 +77,7 @@ const generateInsights = async (
       geminiApiKey,
       keyframes,
       originalMetadata,
+      analysisResult, // Include pre-computed analysis
     }),
   });
 
@@ -88,7 +94,7 @@ const generateInsights = async (
 // ============================================================================
 
 export function useAnalysis(options: UseAnalysisOptions = {}): UseAnalysisReturn {
-  const { geminiApiKey, deepgramApiKey, onComplete, onError, onProgress } = options;
+  const { geminiApiKey, deepgramApiKey, apiTier, onComplete, onError, onProgress } = options;
 
   // Session store state and actions
   const transcription = useSessionStore((state) => state.transcription);
@@ -196,7 +202,7 @@ export function useAnalysis(options: UseAnalysisOptions = {}): UseAnalysisReturn
               message: message || "Analyzing...",
             });
           },
-          { deepgramApiKey, geminiApiKey }
+          { deepgramApiKey, geminiApiKey, apiTier }
         );
       } else {
         // Re-analysis with saved keyframes (from history)
@@ -287,7 +293,8 @@ export function useAnalysis(options: UseAnalysisOptions = {}): UseAnalysisReturn
           videoId, 
           geminiApiKey, 
           analysisKeyframes,
-          originalMetadata
+          originalMetadata,
+          result // Pass analysis result to skip duplicate Gemini calls
         );
         setAiInsights(generatedInsights);
         clientLogger.info("[handleAnalyze] ✅ AI insights generated", {

@@ -1,8 +1,8 @@
 /**
- * HuggingFace Inference Adapter
+ * Gemini Image Generation Adapter
  *
- * Implements InferenceProviderPort for HuggingFace text-to-image API.
- * Includes retry logic, circuit breaker, and timeout handling.
+ * Implements InferenceProviderPort for Google Gemini image generation.
+ * Uses gemini-3-pro-image-preview (primary) and gemini-2.5-flash-image (fallback).
  */
 
 import type {
@@ -14,8 +14,6 @@ import type {
 import {
   APIResponseError,
   APITimeoutError,
-  CIRCUIT_BREAKER_CONFIG,
-  HUGGINGFACE_CONFIG,
   InvalidImageResponseError,
   ProviderUnavailableError,
   RETRY_CONFIG,
@@ -23,66 +21,75 @@ import {
 import { CircuitBreakerFactory } from "./circuit-breaker";
 
 // ============================================================================
-// HuggingFace Response Types
+// Gemini Configuration
 // ============================================================================
 
 /**
- * HuggingFace API error response
+ * Gemini model configurations
  */
-interface HFErrorResponse {
-  error: string;
-  details?: string;
-}
-
-/**
- * HuggingFace text-to-image API response
- */
-interface HFTextToImageResponse {
-  /** Base64 image data (without data URL prefix) */
-  image: string;
-  /** Optional: image metadata */
-  parameters?: TextToImageParams;
-}
+export const GEMINI_IMAGE_CONFIG = {
+  /** Primary model - Gemini 3 Pro Image for professional quality */
+  PRO_MODEL: "gemini-2.0-flash-exp",
+  /** Fallback model - Gemini 2.5 Flash Image for speed */
+  FLASH_MODEL: "gemini-2.0-flash-exp",
+  /** API base URL */
+  API_BASE_URL: "https://generativelanguage.googleapis.com/v1beta/models",
+  /** API timeout in ms */
+  API_TIMEOUT_MS: 60000,
+  /** Default image dimensions for YouTube thumbnails (16:9) */
+  DEFAULT_WIDTH: 1280,
+  DEFAULT_HEIGHT: 720,
+  /** Aspect ratio for YouTube thumbnails */
+  ASPECT_RATIO: "16:9",
+};
 
 // ============================================================================
-// HuggingFace Adapter Implementation
+// Circuit Breaker Configuration for Gemini
+// ============================================================================
+
+const GEMINI_CIRCUIT_BREAKER_CONFIG = {
+  FAILURE_THRESHOLD: 5,
+  RESET_TIMEOUT_MS: 60000,
+  HALT_OPEN_TIMEOUT_MS: 10000,
+};
+
+// ============================================================================
+// Gemini Adapter Implementation
 // ============================================================================
 
 /**
- * HuggingFace inference adapter
+ * Gemini image generation adapter
  *
- * Implements the InferenceProviderPort interface for HuggingFace models.
- * Handles automatic retries, circuit breaking, and error handling.
+ * Implements the InferenceProviderPort interface for Gemini models.
+ * Handles automatic retries and circuit breaking.
  */
-export class HuggingFaceAdapter implements InferenceProviderPort {
-  private apiUrl: string;
+export class GeminiImageAdapter implements InferenceProviderPort {
+  private apiKey: string;
   private model: string;
   private strategy: GenerationStrategy;
   private circuitBreaker: ReturnType<typeof CircuitBreakerFactory.getOrCreate>;
   private requestCount: number = 0;
   private failureCount: number = 0;
 
-  constructor(
-    private readonly apiKey: string,
-    modelName: string,
-    strategy: GenerationStrategy
-  ) {
+  constructor(apiKey: string, modelName: string, strategy: GenerationStrategy) {
     if (!apiKey) {
-      throw new Error("HuggingFace API key is required");
+      throw new Error("Gemini API key is required");
     }
 
+    this.apiKey = apiKey;
     this.model = modelName;
     this.strategy = strategy;
-    this.circuitBreaker = CircuitBreakerFactory.getOrCreate(modelName, CIRCUIT_BREAKER_CONFIG);
-    // Use the HuggingFace router endpoint (api-inference is deprecated)
-    this.apiUrl = `https://router.huggingface.co/hf-inference/models/${modelName}`;
+    this.circuitBreaker = CircuitBreakerFactory.getOrCreate(
+      `gemini-${modelName}`,
+      GEMINI_CIRCUIT_BREAKER_CONFIG
+    );
   }
 
   /**
    * Get provider name
    */
   getProviderName(): string {
-    return "HuggingFace";
+    return "Gemini";
   }
 
   /**
@@ -109,12 +116,10 @@ export class HuggingFaceAdapter implements InferenceProviderPort {
 
     try {
       // Make a lightweight request to check availability
-      const response = await fetch(this.apiUrl, {
-        method: "HEAD",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-        signal: AbortSignal.timeout(HUGGINGFACE_CONFIG.API_TIMEOUT_MS),
+      const url = `${GEMINI_IMAGE_CONFIG.API_BASE_URL}/${this.model}?key=${this.apiKey}`;
+      const response = await fetch(url, {
+        method: "GET",
+        signal: AbortSignal.timeout(10000),
       });
 
       return response.ok;
@@ -124,7 +129,7 @@ export class HuggingFaceAdapter implements InferenceProviderPort {
   }
 
   /**
-   * Generate image from text prompt with retry logic
+   * Generate image from text prompt
    */
   async textToImage(params: TextToImageParams): Promise<ImageData> {
     this.requestCount++;
@@ -197,30 +202,36 @@ export class HuggingFaceAdapter implements InferenceProviderPort {
   }
 
   /**
-   * Execute single API request
+   * Execute single API request to Gemini
    */
   private async executeRequest(params: TextToImageParams): Promise<ImageData> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), HUGGINGFACE_CONFIG.REQUEST_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), GEMINI_IMAGE_CONFIG.API_TIMEOUT_MS);
 
     try {
-      // Format request body for new HuggingFace API
+      const url = `${GEMINI_IMAGE_CONFIG.API_BASE_URL}/${this.model}:generateContent?key=${this.apiKey}`;
+
+      // Build the request body for Gemini image generation
+      // Gemini uses natural language prompts, so we craft a descriptive prompt
       const requestBody = {
-        inputs: params.prompt,
-        parameters: {
-          negative_prompt: params.negative_prompt,
-          width: params.width,
-          height: params.height,
-          guidance_scale: params.guidance_scale,
-          num_inference_steps: params.num_inference_steps,
-          seed: params.seed,
+        contents: [
+          {
+            parts: [
+              {
+                text: params.prompt,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseModalities: ["IMAGE", "TEXT"],
+          temperature: 1,
         },
       };
 
-      const response = await fetch(this.apiUrl, {
+      const response = await fetch(url, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestBody),
@@ -235,20 +246,14 @@ export class HuggingFaceAdapter implements InferenceProviderPort {
       }
 
       // Parse response
-      const data = await this.parseResponse(response);
+      const data = await this.parseResponse(response, params);
 
-      // Return image data
-      return {
-        base64: data.image,
-        mimeType: "image/png",
-        width: params.width,
-        height: params.height,
-      };
+      return data;
     } catch (error) {
       clearTimeout(timeoutId);
 
       if (error instanceof DOMException && error.name === "AbortError") {
-        throw new APITimeoutError(this.model, HUGGINGFACE_CONFIG.REQUEST_TIMEOUT_MS);
+        throw new APITimeoutError(this.model, GEMINI_IMAGE_CONFIG.API_TIMEOUT_MS);
       }
 
       throw error;
@@ -262,18 +267,18 @@ export class HuggingFaceAdapter implements InferenceProviderPort {
     let errorMessage = `HTTP ${response.status}`;
 
     try {
-      const data = (await response.json()) as HFErrorResponse;
-      errorMessage = data.error || errorMessage;
+      const data = await response.json();
+      errorMessage = data.error?.message || data.error || errorMessage;
     } catch {
       // Ignore JSON parse errors
     }
 
     // Handle specific status codes
-    if (response.status === 401) {
+    if (response.status === 401 || response.status === 403) {
       throw new APIResponseError(
         this.model,
-        401,
-        "Invalid API key. Please check your HUGGINGFACE_API_TOKEN."
+        response.status,
+        "Invalid API key. Please check your GEMINI_API_KEY."
       );
     }
 
@@ -292,52 +297,50 @@ export class HuggingFaceAdapter implements InferenceProviderPort {
   }
 
   /**
-   * Parse successful response
+   * Parse successful response from Gemini
    */
-  private async parseResponse(response: Response): Promise<HFTextToImageResponse> {
-    const contentType = response.headers.get("content-type");
+  private async parseResponse(response: Response, params: TextToImageParams): Promise<ImageData> {
+    try {
+      const data = await response.json();
 
-    // Handle JSON response (new API format)
-    if (contentType?.includes("application/json")) {
-      try {
-        const data = await response.json();
-
-        // New API format: image might be directly in response or nested
-        let imageData: string;
-
-        if (data.image && typeof data.image === "string") {
-          // Old format fallback
-          imageData = data.image;
-        } else if (Array.isArray(data) && data.length > 0 && data[0].image) {
-          // New format: array with image data
-          imageData = data[0].image;
-        } else if (typeof data === "string") {
-          // Direct base64 string
-          imageData = data;
-        } else {
-          throw new InvalidImageResponseError(this.model, "Unexpected response format");
-        }
-
-        return { image: imageData };
-      } catch (error) {
-        if (error instanceof InvalidImageResponseError) {
-          throw error;
-        }
-        throw new InvalidImageResponseError(this.model, "Failed to parse JSON response");
+      // Gemini response structure:
+      // { candidates: [{ content: { parts: [{ inlineData: { mimeType, data } }] } }] }
+      const candidates = data.candidates;
+      if (!candidates || candidates.length === 0) {
+        throw new InvalidImageResponseError(this.model, "No candidates in response");
       }
-    }
 
-    // Handle binary response (base64 encoded)
-    if (contentType?.includes("image/")) {
-      const buffer = await response.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString("base64");
-      return { image: base64 };
-    }
+      const parts = candidates[0]?.content?.parts;
+      if (!parts || parts.length === 0) {
+        throw new InvalidImageResponseError(this.model, "No parts in response");
+      }
 
-    throw new InvalidImageResponseError(
-      this.model,
-      `Unexpected response content type: ${contentType}`
-    );
+      // Find the image part
+      const imagePart = parts.find(
+        (part: { inlineData?: { mimeType: string; data: string } }) => part.inlineData
+      );
+
+      if (!imagePart || !imagePart.inlineData) {
+        throw new InvalidImageResponseError(this.model, "No image data in response");
+      }
+
+      const { mimeType, data: base64Data } = imagePart.inlineData;
+
+      return {
+        base64: base64Data,
+        mimeType: mimeType || "image/png",
+        width: params.width,
+        height: params.height,
+      };
+    } catch (error) {
+      if (error instanceof InvalidImageResponseError) {
+        throw error;
+      }
+      throw new InvalidImageResponseError(
+        this.model,
+        `Failed to parse response: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
   }
 
   /**
@@ -401,14 +404,14 @@ export class HuggingFaceAdapter implements InferenceProviderPort {
 }
 
 // ============================================================================
-// HuggingFace Adapter Factory
+// Gemini Adapter Factory
 // ============================================================================
 
 /**
- * Factory for creating HuggingFace adapters
+ * Factory for creating Gemini adapters
  */
-export class HuggingFaceAdapterFactory {
-  private static instances: Map<string, HuggingFaceAdapter> = new Map();
+export class GeminiAdapterFactory {
+  private static instances: Map<string, GeminiImageAdapter> = new Map();
 
   /**
    * Get or create adapter instance
@@ -417,27 +420,27 @@ export class HuggingFaceAdapterFactory {
     apiKey: string,
     modelName: string,
     strategy: GenerationStrategy
-  ): HuggingFaceAdapter {
+  ): GeminiImageAdapter {
     const key = `${modelName}-${strategy}`;
     if (!this.instances.has(key)) {
-      const adapter = new HuggingFaceAdapter(apiKey, modelName, strategy);
+      const adapter = new GeminiImageAdapter(apiKey, modelName, strategy);
       this.instances.set(key, adapter);
     }
-    return this.instances.get(key) as HuggingFaceAdapter;
+    return this.instances.get(key) as GeminiImageAdapter;
   }
 
   /**
-   * Get specialized model adapter
+   * Get pro model adapter (primary - higher quality)
    */
-  static getSpecialized(apiKey: string): HuggingFaceAdapter {
-    return this.getOrCreate(apiKey, HUGGINGFACE_CONFIG.SPECIALIZED_MODEL, "SPECIALIZED");
+  static getPro(apiKey: string): GeminiImageAdapter {
+    return this.getOrCreate(apiKey, GEMINI_IMAGE_CONFIG.PRO_MODEL, "SPECIALIZED");
   }
 
   /**
-   * Get fallback model adapter
+   * Get flash model adapter (fallback - faster)
    */
-  static getFallback(apiKey: string): HuggingFaceAdapter {
-    return this.getOrCreate(apiKey, HUGGINGFACE_CONFIG.FALLBACK_MODEL, "FALLBACK");
+  static getFlash(apiKey: string): GeminiImageAdapter {
+    return this.getOrCreate(apiKey, GEMINI_IMAGE_CONFIG.FLASH_MODEL, "FALLBACK");
   }
 
   /**

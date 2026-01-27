@@ -74,7 +74,7 @@ export class ClientAnalysisService {
     transcription: TranscriptionResult,
     config: AnalysisConfig = {},
     onProgress?: ProgressCallback,
-    apiKeys?: { deepgramApiKey?: string; geminiApiKey?: string }
+    apiKeys?: { deepgramApiKey?: string; geminiApiKey?: string; apiTier?: "free" | "pay_as_you_go" | "enterprise" }
   ): Promise<AnalysisResult> {
     return this.analyze(
       { type: "video", file: videoFile },
@@ -100,7 +100,7 @@ export class ClientAnalysisService {
     transcription: TranscriptionResult,
     config: AnalysisConfig = {},
     onProgress?: ProgressCallback,
-    apiKeys?: { deepgramApiKey?: string; geminiApiKey?: string }
+    apiKeys?: { deepgramApiKey?: string; geminiApiKey?: string; apiTier?: "free" | "pay_as_you_go" | "enterprise" }
   ): Promise<AnalysisResult> {
     return this.analyze(
       { type: "keyframes", keyframes },
@@ -119,7 +119,7 @@ export class ClientAnalysisService {
     transcription: TranscriptionResult,
     config: AnalysisConfig = {},
     onProgress?: ProgressCallback,
-    apiKeys?: { deepgramApiKey?: string; geminiApiKey?: string }
+    apiKeys?: { deepgramApiKey?: string; geminiApiKey?: string; apiTier?: "free" | "pay_as_you_go" | "enterprise" }
   ): Promise<AnalysisResult> {
     const isVideoMode = source.type === "video";
     
@@ -144,6 +144,9 @@ export class ClientAnalysisService {
       }
       if (apiKeys?.deepgramApiKey) {
         formData.append("deepgramApiKey", apiKeys.deepgramApiKey);
+      }
+      if (apiKeys?.apiTier) {
+        formData.append("apiTier", apiKeys.apiTier);
       }
 
       onProgress?.(15, "Processing on server...");

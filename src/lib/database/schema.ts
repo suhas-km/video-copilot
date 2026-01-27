@@ -20,6 +20,7 @@ export interface DBVideo {
   width: number | null;
   height: number | null;
   codec: string | null;
+  source_url: string | null;
   uploaded_at: string;
   created_at: string;
 }

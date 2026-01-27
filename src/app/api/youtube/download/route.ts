@@ -1,10 +1,10 @@
+import { videoRepository } from "@/lib/database/repositories/video-repository";
 import { logError, logInfo } from "@/lib/logger";
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { platform } from "os";
 import path from "path";
-import { v4 as uuidv4 } from "uuid";
 import { create } from "youtube-dl-exec";
 import { validateRequestBody, youtubeDownloadSchema } from "../../../../lib/security/api-schemas";
 
@@ -97,7 +97,58 @@ interface DownloadResponse {
   height?: number;
   fileSize?: number;
   title?: string;
+  description?: string;
+  sourceUrl?: string;
   error?: string;
+  /** If true, this video was already imported before */
+  isDuplicate?: boolean;
+  /** Existing video ID if duplicate */
+  existingVideoId?: string;
+  /** Existing filename if duplicate */
+  existingFilename?: string;
+}
+
+/**
+ * Sanitizes a string to be safe for use as a filename.
+ * Removes/replaces characters that are invalid on most filesystems.
+ */
+function sanitizeFilename(title: string, maxLength: number = 100): string {
+  if (!title) {
+    return "untitled";
+  }
+  
+  // Replace invalid characters with underscores
+  let sanitized = title
+    .replace(/[<>:"/\\|?*]/g, "_") // Windows invalid chars
+    // eslint-disable-next-line no-control-regex -- Intentional: removing control chars for safe filenames
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
+    .replace(/\s+/g, "_")           // Whitespace to underscores
+    .replace(/_+/g, "_")            // Multiple underscores to single
+    .replace(/^_+|_+$/g, "");       // Trim underscores
+  
+  // Truncate to max length (leave room for extension and counter)
+  if (sanitized.length > maxLength) {
+    sanitized = sanitized.substring(0, maxLength);
+  }
+  
+  return sanitized || "untitled";
+}
+
+/**
+ * Generates a unique filename, adding counter if file already exists.
+ */
+async function getUniqueFilename(uploadsDir: string, baseName: string, extension: string): Promise<string> {
+  let filename = `${baseName}${extension}`;
+  let filePath = path.join(uploadsDir, filename);
+  let counter = 1;
+  
+  while (existsSync(filePath)) {
+    filename = `${baseName}_${counter}${extension}`;
+    filePath = path.join(uploadsDir, filename);
+    counter++;
+  }
+  
+  return filename;
 }
 
 export async function POST(request: NextRequest) {
@@ -113,15 +164,65 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { url } = validation.data;
+    const { url, forceReimport } = validation.data as { url: string; forceReimport?: boolean };
+
+    // Check for duplicate URL in database (unless force reimport)
+    if (!forceReimport) {
+      try {
+        const existingVideo = videoRepository.getVideoBySourceUrl(url);
+        if (existingVideo) {
+          logInfo("[YouTube Download] Duplicate URL found: " + url, "youtube-download", {
+            existingVideoId: existingVideo.id,
+            existingFilename: existingVideo.filename,
+          });
+          
+          return NextResponse.json<DownloadResponse>({
+            success: true,
+            isDuplicate: true,
+            existingVideoId: existingVideo.id,
+            existingFilename: existingVideo.filename,
+            title: existingVideo.filename.replace(/\.mp4$/, "").replace(/_/g, " "),
+            sourceUrl: url,
+          });
+        }
+      } catch (dbError) {
+        // Database not initialized yet, continue with download
+        logInfo("[YouTube Download] Database not ready, skipping duplicate check", "youtube-download");
+      }
+    }
 
     // Create uploads directory if it doesn't exist
     const uploadsDir = path.join(process.cwd(), "uploads");
     await fs.mkdir(uploadsDir, { recursive: true });
 
-    // Generate unique filename
-    const videoId = extractVideoId(url);
-    const filename = `youtube_${videoId}_${uuidv4()}.mp4`;
+    // First, get video metadata to use title for filename
+    logInfo("[YouTube Download] Fetching video metadata: " + url, "youtube-download");
+    
+    let videoTitle = "";
+    let videoDescription = "";
+    let duration = 0;
+    let width = 0;
+    let height = 0;
+    
+    try {
+      const videoInfoResult = await ytdl.exec(url, {
+        dumpSingleJson: true,
+        noWarnings: true,
+      });
+      
+      const videoInfo = JSON.parse(videoInfoResult.stdout || "{}");
+      videoTitle = videoInfo.title || videoInfo.fulltitle || "";
+      videoDescription = videoInfo.description || "";
+      duration = videoInfo.duration || 0;
+      width = videoInfo.width || 0;
+      height = videoInfo.height || 0;
+    } catch (e) {
+      logInfo("[YouTube Download] Could not parse video info, using fallback", "youtube-download");
+    }
+
+    // Generate filename from sanitized title
+    const sanitizedTitle = sanitizeFilename(videoTitle || extractVideoId(url));
+    const filename = await getUniqueFilename(uploadsDir, sanitizedTitle, ".mp4");
     const filePath = path.join(uploadsDir, filename);
 
     logInfo("[YouTube Download] Starting download: " + url, "youtube-download");
@@ -148,33 +249,11 @@ export async function POST(request: NextRequest) {
     // Get file stats
     const stats = await fs.stat(filePath);
 
-    // Get video metadata from youtube-dl (includes duration, dimensions, etc.)
-    const videoInfoResult = await ytdl.exec(url, {
-      dumpSingleJson: true,
-      noWarnings: true,
-    });
-
-    // Parse the JSON output
-    let duration = 0;
-    let width = 0;
-    let height = 0;
-    let title = "";
-
-    try {
-      const videoInfo = JSON.parse(videoInfoResult.stdout || "{}");
-      duration = videoInfo.duration || 0;
-      width = videoInfo.width || 0;
-      height = videoInfo.height || 0;
-      title = videoInfo.title || videoInfo.fulltitle || "";
-    } catch (e) {
-      logInfo("[YouTube Download] Could not parse video info, using defaults", "youtube-download");
-    }
-
     logInfo("[YouTube Download] Metadata extracted", "youtube-download", {
       duration,
       width,
       height,
-      title,
+      title: videoTitle,
       fileSize: stats.size,
     });
 
@@ -185,7 +264,9 @@ export async function POST(request: NextRequest) {
       duration,
       width,
       height,
-      title,
+      title: videoTitle,
+      description: videoDescription,
+      sourceUrl: url,
       fileSize: stats.size,
     });
   } catch (error: unknown) {

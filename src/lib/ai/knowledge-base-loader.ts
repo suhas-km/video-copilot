@@ -80,6 +80,9 @@ const CATEGORY_DIRS: Record<string, string> = {
 export class KnowledgeBaseLoader {
   private readonly basePath: string;
   private readonly cache: Map<string, KnowledgeBaseFile> = new Map();
+  private readonly categoryCache: Map<string, KnowledgeBaseFile[]> = new Map();
+  private preloadPromise: Promise<void> | null = null;
+  private isPreloaded = false;
 
   constructor(basePath?: string) {
     // Default to project's LLM_knowledge_Base directory
@@ -88,9 +91,71 @@ export class KnowledgeBaseLoader {
   }
 
   /**
+   * Preload all categories into cache for faster analysis
+   * Call this at server startup to avoid per-request file I/O
+   */
+  async preloadAll(): Promise<void> {
+    if (this.isPreloaded) {
+      return;
+    }
+
+    // Prevent concurrent preloads
+    if (this.preloadPromise) {
+      return this.preloadPromise;
+    }
+
+    this.preloadPromise = this.doPreload();
+    await this.preloadPromise;
+  }
+
+  private async doPreload(): Promise<void> {
+    const startTime = Date.now();
+    const categories = Object.keys(CATEGORY_DIRS) as Array<keyof typeof CATEGORY_DIRS>;
+    
+    logger.info("Preloading knowledge base", { categoryCount: categories.length });
+
+    // Load all categories in parallel
+    await Promise.all(
+      categories.map(async (category) => {
+        await this.loadCategoryInternal(category);
+      })
+    );
+
+    this.isPreloaded = true;
+    logger.info("Knowledge base preloaded", {
+      durationMs: Date.now() - startTime,
+      cachedFiles: this.cache.size,
+      cachedCategories: this.categoryCache.size,
+    });
+  }
+
+  /**
+   * Check if knowledge base is preloaded
+   */
+  isReady(): boolean {
+    return this.isPreloaded;
+  }
+
+  /**
    * Load all files from a category directory
+   * Uses category cache if available to avoid repeated file I/O
    */
   async loadCategory(
+    category: keyof typeof CATEGORY_DIRS
+  ): Promise<KnowledgeBaseFile[]> {
+    // Check category cache first
+    const cached = this.categoryCache.get(category);
+    if (cached) {
+      return cached;
+    }
+
+    return this.loadCategoryInternal(category);
+  }
+
+  /**
+   * Internal method to load category from disk and cache it
+   */
+  private async loadCategoryInternal(
     category: keyof typeof CATEGORY_DIRS
   ): Promise<KnowledgeBaseFile[]> {
     const dirName = CATEGORY_DIRS[category];
@@ -112,6 +177,9 @@ export class KnowledgeBaseLoader {
           results.push(loaded);
         }
       }
+
+      // Cache the category results
+      this.categoryCache.set(category, results);
 
       logger.info("Loaded category files", {
         category,
@@ -231,6 +299,9 @@ export class KnowledgeBaseLoader {
    */
   clearCache(): void {
     this.cache.clear();
+    this.categoryCache.clear();
+    this.isPreloaded = false;
+    this.preloadPromise = null;
   }
 }
 
@@ -321,4 +392,21 @@ export function getKnowledgeBaseLoader(): KnowledgeBaseLoader {
 export function resetKnowledgeBaseLoader(): void {
   loaderInstance?.clearCache();
   loaderInstance = null;
+}
+
+/**
+ * Preload the knowledge base for faster analysis
+ * Call this at server startup to avoid per-request file I/O
+ * Returns immediately if already preloaded
+ */
+export async function preloadKnowledgeBase(): Promise<void> {
+  const loader = getKnowledgeBaseLoader();
+  await loader.preloadAll();
+}
+
+/**
+ * Check if knowledge base is ready (preloaded)
+ */
+export function isKnowledgeBaseReady(): boolean {
+  return loaderInstance?.isReady() ?? false;
 }

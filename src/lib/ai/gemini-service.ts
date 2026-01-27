@@ -18,7 +18,8 @@ import { GenerativeModel, GoogleGenerativeAI } from "@google/generative-ai";
 import { AppError, AppErrorType, ProgressCallback } from "../../types";
 import { BaseAnalysisResponse, CategorySchemaType, VideoAnalysisIssue } from "../../types/schemas";
 import { logger } from "../logger";
-import { GEMINI_CONFIG } from "./constants";
+import { API_TIER_CONFIG, ApiTier, GEMINI_CONFIG } from "./constants";
+import { preloadKnowledgeBase } from "./knowledge-base-loader";
 import { AnalysisOptions, runAnalyzer, VideoAnalysisInput } from "./video-analyzers";
 
 // ============================================================================
@@ -37,6 +38,8 @@ export interface GeminiServiceConfig {
   defaultTemperature?: number;
   /** Default max output tokens */
   defaultMaxTokens?: number;
+  /** API tier for rate limiting (default: free) */
+  apiTier?: ApiTier;
 }
 
 /**
@@ -92,14 +95,23 @@ export class GeminiService {
 
   /**
    * Initialize Gemini client with configuration
+   * 
+   * API Tier can be set via:
+   * - config.apiTier parameter
+   * - GEMINI_API_TIER environment variable ("free" | "pay_as_you_go" | "enterprise")
    */
   public initialize(config?: Partial<GeminiServiceConfig>): void {
+    // Parse API tier from environment or config
+    const envTier = process.env.GEMINI_API_TIER as ApiTier | undefined;
+    const apiTier = config?.apiTier ?? envTier ?? GEMINI_CONFIG.DEFAULT_API_TIER;
+
     // Use provided config or create from environment variables
     const finalConfig: GeminiServiceConfig = {
       apiKey: config?.apiKey || process.env.GEMINI_API_KEY || "",
       modelName: config?.modelName ?? GEMINI_CONFIG.DEFAULT_MODEL,
       defaultTemperature: config?.defaultTemperature ?? 0.7,
       defaultMaxTokens: config?.defaultMaxTokens ?? 8192,
+      apiTier,
     };
 
     if (!finalConfig.apiKey) {
@@ -108,6 +120,11 @@ export class GeminiService {
         "Gemini API key not provided. Set GEMINI_API_KEY environment variable or pass key to initialize()."
       );
     }
+
+    logger.info("Initializing Gemini service", {
+      apiTier: finalConfig.apiTier,
+      maxParallel: API_TIER_CONFIG[finalConfig.apiTier!].maxParallel,
+    });
 
     this.config = finalConfig;
     this.client = new GoogleGenerativeAI(finalConfig.apiKey);
@@ -128,6 +145,13 @@ export class GeminiService {
     logger.info("Gemini client initialized with fallback models", {
       availableModels: Array.from(this.models.keys()),
       totalModels: this.models.size,
+    });
+
+    // Preload knowledge base in background for faster analysis
+    preloadKnowledgeBase().catch((error) => {
+      logger.warn("Failed to preload knowledge base", {
+        error: error instanceof Error ? error.message : "Unknown",
+      });
     });
   }
 
@@ -229,11 +253,11 @@ export class GeminiService {
   // ==========================================================================
 
   /**
-   * Analyze multiple categories SEQUENTIALLY to respect rate limits
+   * Analyze multiple categories with configurable parallelism based on API tier
    * 
-   * Free tier limits:
-   * - gemini-2.5-flash: 5 RPM (requests per minute)
-   * - Running 8 analyses in parallel would instantly exhaust the limit
+   * Free tier: Sequential (5 RPM limit)
+   * Pay-as-you-go: Up to 3 parallel
+   * Enterprise: Up to 8 parallel (all categories at once)
    *
    * @param categories - Categories to analyze
    * @param input - Video analysis input
@@ -265,22 +289,32 @@ export class GeminiService {
     const total = categories.length;
     let completedCount = 0;
 
-    // Run categories SEQUENTIALLY to respect rate limits (5 RPM for free tier)
+    // Get API tier configuration
+    const apiTier = this.config?.apiTier ?? GEMINI_CONFIG.DEFAULT_API_TIER;
+    const tierConfig = API_TIER_CONFIG[apiTier];
+    const maxParallel = tierConfig.maxParallel;
+
+    const isParallel = maxParallel > 1;
+    const executionMode = isParallel ? `parallel (max ${maxParallel})` : "sequential";
+
     if (onProgress) {
-      onProgress(5, `Analyzing ${total} categories sequentially (rate limit: 5/min)...`);
+      onProgress(5, `Analyzing ${total} categories ${executionMode} (${apiTier} tier)...`);
     }
 
-    for (const category of categories) {
-      if (!category) {
-        continue;
-      }
+    logger.info("Starting category analysis", {
+      videoId: input.videoId,
+      categoryCount: total,
+      apiTier,
+      maxParallel,
+      executionMode,
+    });
 
-      // Create options with retry message callback that updates progress
+    // Helper to analyze a single category with error handling
+    const analyzeSingle = async (category: CategorySchemaType): Promise<void> => {
       const optionsWithRetry: AnalysisOptions = {
         ...options,
         onRetryMessage: onProgress 
           ? (message: string) => {
-              // Report the retry message through progress callback
               const currentProgress = Math.round((completedCount / total) * 90) + 5;
               onProgress(currentProgress, message);
             }
@@ -325,6 +359,35 @@ export class GeminiService {
         } else {
           results[category] = null;
           completedCount++;
+        }
+      }
+    };
+
+    // Execute based on parallelism setting
+    if (maxParallel === 1) {
+      // Sequential execution (free tier)
+      for (const category of categories) {
+        if (category) {
+          await analyzeSingle(category);
+        }
+      }
+    } else {
+      // Parallel execution in batches
+      const validCategories = categories.filter((c): c is CategorySchemaType => !!c);
+      
+      for (let i = 0; i < validCategories.length; i += maxParallel) {
+        const batch = validCategories.slice(i, i + maxParallel);
+        logger.debug("Processing category batch", {
+          batchNumber: Math.floor(i / maxParallel) + 1,
+          categories: batch,
+        });
+        
+        // Run batch in parallel
+        await Promise.all(batch.map(analyzeSingle));
+        
+        // Small delay between batches to respect rate limits
+        if (i + maxParallel < validCategories.length) {
+          await new Promise((resolve) => setTimeout(resolve, tierConfig.delayMs));
         }
       }
     }
@@ -469,6 +532,88 @@ export class GeminiService {
       this.initialize();
     }
     return this.analyzeCategory("checklists", input, options);
+  }
+
+  /**
+   * Quick analysis mode - analyzes only essential categories (3 instead of 8)
+   * ~3x faster than full analysis: core_concepts, scripting, checklists
+   * 
+   * Estimated time: ~60-90 seconds vs 200-250 seconds for full analysis
+   */
+  public async quickAnalysis(
+    input: VideoAnalysisInput,
+    options?: AnalysisOptions,
+    onProgress?: ProgressCallback
+  ): Promise<FullVideoAnalysis> {
+    // Auto-initialize from environment if not already done
+    if (!this.isInitialized()) {
+      this.initialize();
+    }
+
+    const startTime = Date.now();
+    const essentialCategories: CategorySchemaType[] = [
+      "core_concepts",
+      "scripting", 
+      "checklists",
+    ];
+
+    logger.info("Starting quick video analysis (essential categories only)", {
+      videoId: input.videoId,
+      categories: essentialCategories.length,
+    });
+
+    // Run essential category analyzers
+    const categoryResults = await this.analyzeCategories(
+      essentialCategories,
+      input,
+      options,
+      onProgress
+    );
+
+    // Aggregate all issues across categories
+    const allIssues: VideoAnalysisIssue[] = [];
+    let totalScore = 0;
+    let scoreCount = 0;
+    const priorityActions: string[] = [];
+
+    for (const [, result] of Object.entries(categoryResults)) {
+      if (result) {
+        allIssues.push(...result.issues);
+        totalScore += result.overallScore;
+        scoreCount++;
+        priorityActions.push(...result.priorityActions);
+      }
+    }
+
+    // Sort issues by severity
+    const severityOrder = { critical: 0, major: 1, minor: 2, suggestion: 3 };
+    allIssues.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+    // Calculate overall score
+    const overallScore = scoreCount > 0 ? totalScore / scoreCount : 0;
+
+    // Get top priority actions (deduplicated)
+    const uniqueActions = [...new Set(priorityActions)].slice(0, 5);
+
+    const processingTimeMs = Date.now() - startTime;
+
+    logger.info("Quick video analysis completed", {
+      videoId: input.videoId,
+      processingTimeMs,
+      issueCount: allIssues.length,
+      overallScore: overallScore.toFixed(2),
+    });
+
+    return {
+      videoId: input.videoId,
+      duration: input.duration,
+      analyzedAt: new Date(),
+      overallScore,
+      categoryResults,
+      allIssues,
+      priorityActions: uniqueActions,
+      processingTimeMs,
+    };
   }
 
   // ==========================================================================

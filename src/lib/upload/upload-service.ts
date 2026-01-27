@@ -134,7 +134,8 @@ export class UploadService {
   public async uploadVideo(
     file: File,
     onProgress?: ProgressCallback,
-    originalTitle?: string
+    originalTitle?: string,
+    sourceUrl?: string
   ): Promise<VideoUploadSession> {
     const sessionId = uuidv4();
     const startTime = Date.now();
@@ -202,6 +203,11 @@ export class UploadService {
       // Set original title if provided (e.g., from YouTube)
       if (originalTitle) {
         session.metadata.originalTitle = originalTitle;
+      }
+
+      // Set source URL if provided (e.g., from YouTube)
+      if (sourceUrl) {
+        session.metadata.sourceUrl = sourceUrl;
       }
 
       // Complete upload

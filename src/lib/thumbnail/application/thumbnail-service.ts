@@ -116,6 +116,11 @@ export class ThumbnailService implements ThumbnailGeneratorPort {
     try {
       result = await this.generateWithSpecialized(request);
     } catch (error) {
+      // Log the error to understand why specialized failed
+      console.warn("[ThumbnailService] Specialized model failed, falling back:", {
+        error: error instanceof Error ? error.message : String(error),
+        model: this.specializedProvider?.getModelName(),
+      });
       // Use fallback if specialized fails
       result = await this.generateWithFallback(request);
     }
