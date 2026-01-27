@@ -432,7 +432,7 @@ export function ThumbnailGenerator({
                 magicPromptLoading
                   ? "cursor-wait bg-purple-700/50 text-purple-300"
                   : hasMagicPromptData
-                    ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg hover:from-purple-700 hover:to-pink-700 hover:shadow-purple-500/25"
+                    ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg hover:from-violet-700 hover:to-indigo-700 hover:shadow-violet-500/25"
                     : "cursor-not-allowed bg-gray-700 text-gray-500"
               )}
             >
@@ -598,7 +598,7 @@ export function ThumbnailGenerator({
           status === "generating"
             ? "cursor-wait bg-purple-700 text-white"
             : hasInput
-              ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg hover:from-purple-700 hover:to-pink-700 hover:shadow-purple-500/25"
+              ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg hover:from-violet-700 hover:to-indigo-700 hover:shadow-violet-500/25"
               : "cursor-not-allowed bg-gray-700 text-gray-400"
         )}
       >

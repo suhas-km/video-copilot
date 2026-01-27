@@ -317,7 +317,7 @@ export function ResultsView({
                     retentionAnalysis.suspenseMoments.length > 0 && (
                       <div className="rounded-2xl border border-gray-700/50 bg-gradient-to-br from-gray-800/80 to-gray-900/80 p-6">
                         <div className="mb-5 flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-pink-500/30 bg-gradient-to-br from-pink-500/20 to-rose-500/20">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-500/30 bg-gradient-to-br from-orange-500/20 to-amber-500/20">
                             <span className="text-xl">🔥</span>
                           </div>
                           <h4 className="text-lg font-bold text-white">Engagement Hot Spots</h4>
@@ -326,9 +326,9 @@ export function ResultsView({
                           {retentionAnalysis.suspenseMoments.slice(0, 5).map((moment, index) => (
                             <div
                               key={index}
-                              className="flex items-center gap-4 rounded-xl border border-pink-500/20 bg-gradient-to-r from-pink-500/10 to-rose-500/5 p-4"
+                              className="flex items-center gap-4 rounded-xl border border-violet-500/20 bg-gradient-to-r from-violet-500/10 to-indigo-500/5 p-4"
                             >
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-pink-500/20 font-mono text-sm font-bold text-pink-400">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/20 font-mono text-sm font-bold text-violet-400">
                                 {formatTime(moment.start)}
                               </div>
                               <div className="min-w-0 flex-1">
@@ -336,7 +336,7 @@ export function ResultsView({
                                   {moment.description}
                                 </p>
                                 <div className="mt-1 flex items-center gap-2">
-                                  <span className="text-xs font-medium text-pink-400">
+                                  <span className="text-xs font-medium text-violet-400">
                                     Intensity:
                                   </span>
                                   <div className="flex gap-0.5">
@@ -345,7 +345,7 @@ export function ResultsView({
                                         key={level}
                                         className={`h-1.5 w-3 rounded-full ${
                                           level <= Math.ceil(moment.intensity * 5)
-                                            ? "bg-pink-500"
+                                            ? "bg-orange-500"
                                             : "bg-gray-600"
                                         }`}
                                       />
@@ -381,7 +381,7 @@ export function ResultsView({
                   <FloatingLimeOrb className="absolute -right-12 -top-14 opacity-45" size={180} />
                   <div className="relative z-10 flex flex-col items-center">
                     <motion.div
-                      className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-purple-500/30 bg-gradient-to-br from-purple-500/20 to-pink-500/20"
+                      className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-purple-500/30 bg-gradient-to-br from-violet-500/20 to-indigo-500/20"
                       animate={reduceMotion ? { y: 0 } : { y: [0, -6, 0] }}
                       transition={{ duration: 4.2, repeat: Infinity, ease: "easeInOut" }}
                     >
@@ -399,11 +399,11 @@ export function ResultsView({
               {aiInsights && (
                 <>
                   {/* Improvement Potential Hero */}
-                  <div className="relative overflow-hidden rounded-2xl border border-purple-500/30 bg-gradient-to-br from-gray-800 via-gray-900 to-gray-800 p-6">
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500/5 via-pink-500/5 to-blue-500/5" />
+                  <div className="relative overflow-hidden rounded-2xl border border-violet-500/30 bg-gradient-to-br from-gray-800 via-gray-900 to-gray-800 p-6">
+                    <div className="absolute inset-0 bg-gradient-to-r from-violet-500/5 via-indigo-500/5 to-cyan-500/5" />
                     <div className="relative z-10">
                       <div className="mb-4 flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 shadow-lg shadow-purple-500/25">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-500/25">
                           <span className="text-2xl">🚀</span>
                         </div>
                         <div>
@@ -439,7 +439,7 @@ export function ResultsView({
                         </div>
                         <div className="h-4 w-full overflow-hidden rounded-full bg-gray-700/50">
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 transition-all duration-1000"
+                            className="h-full rounded-full bg-gradient-to-r from-violet-500 via-indigo-500 to-cyan-500 transition-all duration-1000"
                             style={{ width: `${aiInsights.overallImprovementPotential * 100}%` }}
                           />
                         </div>
@@ -486,7 +486,7 @@ export function ResultsView({
                                   <div className="flex items-center gap-2">
                                     <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-700">
                                       <div 
-                                        className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500"
+                                        className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500"
                                         style={{ width: `${factor.score * 100}%` }}
                                       />
                                     </div>
@@ -583,7 +583,7 @@ export function ResultsView({
                   {aiInsights.visualRecommendations.length > 0 && (
                     <div className="rounded-2xl border border-gray-700/50 bg-gradient-to-br from-gray-800/80 to-gray-900/80 p-6">
                       <div className="mb-5 flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-pink-500/30 bg-gradient-to-br from-pink-500/20 to-rose-500/20">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-violet-500/30 bg-gradient-to-br from-violet-500/20 to-indigo-500/20">
                           <span className="text-xl">🎬</span>
                         </div>
                         <h4 className="text-lg font-bold text-white">Visual Recommendations</h4>
@@ -592,10 +592,10 @@ export function ResultsView({
                         {aiInsights.visualRecommendations.slice(0, 5).map((rec, index) => (
                           <div
                             key={index}
-                            className="group rounded-xl border border-pink-500/20 bg-gradient-to-r from-pink-500/10 to-rose-500/5 p-4 transition-all hover:border-pink-500/40"
+                            className="group rounded-xl border border-violet-500/20 bg-gradient-to-r from-violet-500/10 to-indigo-500/5 p-4 transition-all hover:border-violet-500/40"
                           >
                             <div className="flex items-start gap-4">
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-pink-500/20 text-pink-400">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/20 text-violet-400">
                                 <span className="text-lg">🎬</span>
                               </div>
                               <div className="min-w-0 flex-1">

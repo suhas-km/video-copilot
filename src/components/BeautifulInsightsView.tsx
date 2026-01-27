@@ -372,7 +372,7 @@ export function BeautifulInsightsView({ insights }: BeautifulInsightsViewProps) 
       {insights.visualRecommendations.length > 0 && (
         <div className="rounded-2xl border border-gray-700/50 bg-gradient-to-br from-gray-800/50 to-gray-900/50 p-6 backdrop-blur-sm">
           <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-rose-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600">
               <Target className="h-5 w-5 text-white" />
             </div>
             <div>
@@ -386,21 +386,21 @@ export function BeautifulInsightsView({ insights }: BeautifulInsightsViewProps) 
             {insights.visualRecommendations.slice(0, 5).map((rec, index) => (
               <div
                 key={index}
-                className="group relative overflow-hidden rounded-xl border border-gray-700/30 bg-gradient-to-r from-gray-800/30 to-gray-900/20 p-4 transition-all hover:border-pink-500/50 hover:shadow-lg hover:shadow-pink-500/10"
+                className="group relative overflow-hidden rounded-xl border border-gray-700/30 bg-gradient-to-r from-gray-800/30 to-gray-900/20 p-4 transition-all hover:border-violet-500/50 hover:shadow-lg hover:shadow-violet-500/10"
               >
                 <div className="flex items-start gap-4">
                   <div className="flex shrink-0 flex-col items-center gap-2">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-pink-500/20 text-sm font-semibold text-pink-400">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/20 text-sm font-semibold text-violet-400">
                       {index + 1}
                     </span>
-                    <div className="flex items-center gap-1 text-xs text-pink-400">
+                    <div className="flex items-center gap-1 text-xs text-violet-400">
                       <ArrowUp className="h-3 w-3" />
                       <span>{Math.round(rec.expectedImpact * 100)}% impact</span>
                     </div>
                   </div>
                   <div className="flex-1">
                     <div className="mb-2 flex items-center gap-2">
-                      <span className="inline-flex items-center rounded-full bg-pink-500/10 px-3 py-1 text-xs font-medium capitalize text-pink-400">
+                      <span className="inline-flex items-center rounded-full bg-violet-500/10 px-3 py-1 text-xs font-medium capitalize text-violet-400">
                         {rec.type}
                       </span>
                       <span className="text-xs text-gray-400">Priority: {rec.priority}/5</span>
