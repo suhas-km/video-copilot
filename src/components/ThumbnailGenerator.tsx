@@ -1,119 +1,284 @@
 /**
  * Video Copilot - YouTube Thumbnail Generator Component
- * Generates YouTube thumbnails using HuggingFace AI models
+ * Generates YouTube thumbnails using Google Gemini AI
  */
 
 "use client";
 
-import { ThumbnailGenerationRequest, useThumbnailGeneration } from "@/hooks/useThumbnailGeneration";
+import {
+  browserHistoryService,
+  type StoredThumbnail,
+} from "@/lib/database/browser-history-service";
+import {
+  COLOR_SCHEMES,
+  type ColorScheme,
+  getOptionLabel,
+  MOOD_OPTIONS,
+  type MoodOption,
+  STYLE_MODIFIERS,
+  type StyleModifier,
+  type ThumbnailOptions,
+  VISUAL_ELEMENTS,
+  type VisualElement,
+} from "@/lib/thumbnail/application/gemini-prompt-builder";
 import { cn } from "@/utils/cn";
 import Image from "next/image";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-/** Available thumbnail styles with descriptions */
-const STYLE_OPTIONS = [
-  {
-    value: "HIGH_ENERGY",
-    label: "High Energy",
-    description: "Bold, colorful, expressive reactions",
-  },
-  { value: "MINIMAL_TECH", label: "Minimal Tech", description: "Clean, modern, professional" },
-  { value: "FINANCE", label: "Finance", description: "Charts, money, authority" },
-  { value: "GAMING", label: "Gaming", description: "Neon, action, high energy" },
-] as const;
+/** Generation status */
+type GenerationStatus = "idle" | "generating" | "success" | "error";
 
-type ThumbnailStyle = (typeof STYLE_OPTIONS)[number]["value"];
+/** Result type for thumbnail generation */
+interface ThumbnailResult {
+  id: string;
+  imageData: string;
+  width: number;
+  height: number;
+  model: string;
+  strategy: string;
+  latencyMs: number;
+  seed: number;
+}
 
 interface ThumbnailGeneratorProps {
   /** Video ID for linking thumbnail to analysis */
   videoId?: string;
-  /** Suggested title from video analysis */
-  suggestedTitle?: string;
-  /** Suggested topic from video analysis */
-  suggestedTopic?: string;
-  /** HuggingFace API key for thumbnail generation */
-  huggingfaceApiKey?: string;
+  /** Video title for context */
+  videoTitle?: string;
+  /** Video description for context */
+  videoDescription?: string;
+  /** Video tags for context */
+  videoTags?: string[];
+  /** Transcription text for magic prompt */
+  transcription?: string;
+  /** Keyframe descriptions for magic prompt */
+  keyframeDescriptions?: string[];
+  /** Video duration in seconds */
+  videoDuration?: number;
+  /** Gemini API key for thumbnail generation */
+  geminiApiKey?: string;
   /** Callback when thumbnail is generated */
   onGenerated?: (result: { id: string; imageData: string }) => void;
 }
 
 export function ThumbnailGenerator({
   videoId,
-  suggestedTitle = "",
-  suggestedTopic = "",
-  huggingfaceApiKey,
+  videoTitle = "",
+  videoDescription = "",
+  videoTags,
+  transcription,
+  keyframeDescriptions,
+  videoDuration,
+  geminiApiKey,
   onGenerated,
 }: ThumbnailGeneratorProps) {
-  const {
-    status,
-    result,
-    error,
-    history,
-    generate,
-    saveToHistory,
-    restoreFromHistory,
-    deleteFromHistory,
-    reset,
-  } = useThumbnailGeneration();
+  // Generation state
+  const [status, setStatus] = useState<GenerationStatus>("idle");
+  const [result, setResult] = useState<ThumbnailResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Form state
-  const [titleText, setTitleText] = useState(suggestedTitle);
-  const [topic, setTopic] = useState(suggestedTopic);
-  const [style, setStyle] = useState<ThumbnailStyle>("HIGH_ENERGY");
+  // Form state - free-form description
+  const [description, setDescription] = useState("");
+  const [titleText, setTitleText] = useState("");
 
-  // Advanced options (collapsed by default)
+  // Clickable option states
+  const [selectedVisualElements, setSelectedVisualElements] = useState<VisualElement[]>([]);
+  const [selectedStyle, setSelectedStyle] = useState<StyleModifier | null>(null);
+  const [selectedMood, setSelectedMood] = useState<MoodOption | null>(null);
+  const [selectedColorScheme, setSelectedColorScheme] = useState<ColorScheme | null>(null);
+
+  // Advanced options
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [guidanceScale, setGuidanceScale] = useState(7.5);
-  const [numInferenceSteps, setNumInferenceSteps] = useState(30);
-  const [seed, setSeed] = useState<number | undefined>(undefined);
+  const [customInstructions, setCustomInstructions] = useState("");
 
-  // Brand options
-  const [primaryColor, setPrimaryColor] = useState("");
-  const [accentColor, setAccentColor] = useState("");
-
-  // UI state
+  // History state
+  const [history, setHistory] = useState<StoredThumbnail[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+
+  // Track last generation config for change detection
+  const [lastGeneratedConfig, setLastGeneratedConfig] = useState<string | null>(null);
+  const [configUnchangedWarning, setConfigUnchangedWarning] = useState(false);
+
+  // Magic prompt state
+  const [magicPromptLoading, setMagicPromptLoading] = useState(false);
+  const [magicPromptError, setMagicPromptError] = useState<string | null>(null);
+
+  /**
+   * Load thumbnail history on mount
+   */
+  const loadHistory = useCallback(async () => {
+    try {
+      const thumbnails = await browserHistoryService.getThumbnails(20);
+      setHistory(thumbnails);
+    } catch (err) {
+      console.error("Failed to load thumbnail history:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  /**
+   * Handle magic prompt generation
+   */
+  const handleMagicPrompt = async () => {
+    // Check if we have any context data
+    if (!transcription && !keyframeDescriptions?.length && !videoTitle && !videoDescription) {
+      setMagicPromptError("No video data available for magic prompt. Complete analysis first.");
+      setTimeout(() => setMagicPromptError(null), 3000);
+      return;
+    }
+
+    setMagicPromptLoading(true);
+    setMagicPromptError(null);
+
+    try {
+      const response = await fetch("/api/thumbnails/magic-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcription,
+          keyframeDescriptions,
+          title: videoTitle,
+          description: videoDescription,
+          tags: videoTags,
+          duration: videoDuration,
+          geminiApiKey,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Magic prompt failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Auto-populate the description field
+      setDescription(data.prompt);
+
+      // Optionally set mood and color scheme if available
+      if (data.mood) {
+        const moodKey = data.mood.toUpperCase().replace(/\s+/g, "_") as MoodOption;
+        if (MOOD_OPTIONS[moodKey]) {
+          setSelectedMood(moodKey);
+        }
+      }
+
+      if (data.colorScheme) {
+        const colorKey = data.colorScheme.toUpperCase().replace(/\s+/g, "_") as ColorScheme;
+        if (COLOR_SCHEMES[colorKey]) {
+          setSelectedColorScheme(colorKey);
+        }
+      }
+    } catch (err) {
+      setMagicPromptError(err instanceof Error ? err.message : "Failed to generate magic prompt");
+    } finally {
+      setMagicPromptLoading(false);
+    }
+  };
+
+  /**
+   * Check if magic prompt is available
+   */
+  const hasMagicPromptData = !!(transcription || keyframeDescriptions?.length || videoTitle || videoDescription);
+
+  /**
+   * Toggle visual element selection
+   */
+  const toggleVisualElement = (element: VisualElement) => {
+    setSelectedVisualElements((prev) =>
+      prev.includes(element) ? prev.filter((e) => e !== element) : [...prev, element]
+    );
+  };
+
+  /**
+   * Get current config as string for comparison
+   */
+  const getCurrentConfigHash = () => {
+    return JSON.stringify({
+      description: description.trim(),
+      titleText: titleText.trim(),
+      visualElements: selectedVisualElements,
+      style: selectedStyle,
+      mood: selectedMood,
+      colorScheme: selectedColorScheme,
+      customInstructions: customInstructions.trim(),
+    });
+  };
 
   /**
    * Handle thumbnail generation
    */
   const handleGenerate = async () => {
-    if (!titleText.trim() || !topic.trim()) {
+    // At least description or some options should be provided
+    if (!description.trim() && selectedVisualElements.length === 0 && !selectedStyle && !selectedMood) {
+      setError("Please provide a description or select some options");
       return;
     }
 
-    const request: ThumbnailGenerationRequest = {
-      titleText: titleText.trim(),
-      topic: topic.trim(),
-      style,
-      videoId,
-      guidanceScale,
-      numInferenceSteps,
-      seed,
-      huggingfaceApiKey,
-    };
-
-    // Add brand options if provided
-    if (primaryColor || accentColor) {
-      request.brandOptions = {};
-      if (primaryColor) {
-        request.brandOptions.primaryColor = primaryColor;
-      }
-      if (accentColor) {
-        request.brandOptions.accentColor = accentColor;
-      }
+    // Check if config is unchanged from last generation
+    const currentConfig = getCurrentConfigHash();
+    if (lastGeneratedConfig === currentConfig && result) {
+      setConfigUnchangedWarning(true);
+      setTimeout(() => setConfigUnchangedWarning(false), 3000);
+      return;
     }
 
-    await generate(request);
+    setStatus("generating");
+    setError(null);
+    setSaveStatus("idle"); // Reset save status for new generation
+    setConfigUnchangedWarning(false);
+
+    try {
+      const options: ThumbnailOptions = {
+        description: description.trim() || undefined,
+        titleText: titleText.trim() || undefined,
+        videoTitle: videoTitle || undefined,
+        videoDescription: videoDescription || undefined,
+        visualElements: selectedVisualElements.length > 0 ? selectedVisualElements : undefined,
+        style: selectedStyle || undefined,
+        mood: selectedMood || undefined,
+        colorScheme: selectedColorScheme || undefined,
+        customInstructions: customInstructions.trim() || undefined,
+      };
+
+      const response = await fetch("/api/thumbnails/generate-gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          options,
+          videoId,
+          geminiApiKey,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Generation failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setResult(data);
+      setStatus("success");
+      setLastGeneratedConfig(currentConfig); // Store config for comparison
+
+      if (onGenerated) {
+        onGenerated({ id: data.id, imageData: data.imageData });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate thumbnail");
+      setStatus("error");
+    }
   };
 
   /**
    * Download thumbnail as PNG
    */
   const handleDownload = () => {
-    if (!result) {
-      return;
-    }
+    if (!result) return;
 
     const link = document.createElement("a");
     link.href = result.imageData;
@@ -124,63 +289,102 @@ export function ThumbnailGenerator({
   };
 
   /**
-   * Save to history
+   * Reset form
+   */
+  const handleReset = () => {
+    setStatus("idle");
+    setResult(null);
+    setError(null);
+    setSaveStatus("idle");
+  };
+
+  /**
+   * Save thumbnail to history
    */
   const handleSave = async () => {
-    await saveToHistory(videoId);
-    if (result && onGenerated) {
-      onGenerated({ id: result.id, imageData: result.imageData });
+    if (!result) return;
+
+    setSaveStatus("saving");
+    try {
+      const thumbnailToSave: StoredThumbnail = {
+        id: result.id,
+        videoId: videoId,
+        imageData: result.imageData,
+        titleText: titleText || description.slice(0, 50),
+        topic: description || videoTitle || "thumbnail",
+        style: selectedStyle || "CUSTOM",
+        model: result.model,
+        strategy: result.strategy,
+        seed: result.seed,
+        generatedAt: new Date(),
+      };
+
+      await browserHistoryService.saveThumbnail(thumbnailToSave);
+      setSaveStatus("saved");
+      await loadHistory();
+    } catch (err) {
+      console.error("Failed to save thumbnail:", err);
+      setError("Failed to save thumbnail to history");
+      setSaveStatus("idle");
     }
   };
 
   /**
-   * Regenerate with new seed
+   * Delete thumbnail from history
    */
-  const handleRegenerate = async () => {
-    setSeed(undefined); // Will get new random seed
-    await handleGenerate();
+  const handleDeleteFromHistory = async (thumbnailId: string) => {
+    try {
+      await browserHistoryService.deleteThumbnail(thumbnailId);
+      await loadHistory();
+    } catch (err) {
+      console.error("Failed to delete thumbnail:", err);
+    }
   };
 
   /**
-   * Calculate word count for validation feedback
+   * Check if form has any input
    */
-  const wordCount = titleText.trim().split(/\s+/).filter(Boolean).length;
-  const isValidTitle = wordCount >= 2 && wordCount <= 7 && titleText.length <= 100;
-  const isValidForm = isValidTitle && topic.trim().length > 0;
+  const hasInput =
+    description.trim().length > 0 ||
+    selectedVisualElements.length > 0 ||
+    selectedStyle !== null ||
+    selectedMood !== null;
 
   return (
     <div className="mx-auto w-full max-w-4xl rounded-xl border border-gray-700/50 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6 shadow-2xl">
+      {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h2 className="flex items-center gap-2 text-2xl font-bold text-white">
             <span className="text-3xl">🎨</span>
             YouTube Thumbnail Generator
           </h2>
-          <p className="mt-1 text-sm text-gray-400">
-            AI-powered thumbnails using HuggingFace FLUX models
-          </p>
+          <p className="mt-1 text-sm text-gray-400">AI-powered thumbnails using Google Gemini</p>
         </div>
-        <button
-          onClick={() => setShowHistory(!showHistory)}
-          className={cn(
-            "rounded-lg px-4 py-2 font-medium transition-all",
-            showHistory ? "bg-purple-600 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-          )}
-        >
-          {showHistory ? "Hide History" : `History (${history.length})`}
-        </button>
+        {history.length > 0 && (
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className={cn(
+              "rounded-lg px-4 py-2 font-medium transition-all",
+              showHistory
+                ? "bg-purple-600 text-white"
+                : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+            )}
+          >
+            {showHistory ? "Hide History" : `History (${history.length})`}
+          </button>
+        )}
       </div>
 
       {/* History Panel */}
       {showHistory && history.length > 0 && (
         <div className="mb-6 rounded-lg border border-gray-700 bg-gray-800/50 p-4">
-          <h3 className="mb-3 text-lg font-semibold text-white">Recent Thumbnails</h3>
+          <h3 className="mb-3 text-lg font-semibold text-white">Saved Thumbnails</h3>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             {history.slice(0, 8).map((thumb) => (
               <div
                 key={thumb.id}
                 className="group relative cursor-pointer overflow-hidden rounded-lg border border-gray-600 transition-all hover:border-purple-500"
-                onClick={() => restoreFromHistory(thumb.id)}
               >
                 <Image
                   src={thumb.imageData}
@@ -189,13 +393,13 @@ export function ThumbnailGenerator({
                   width={320}
                   height={180}
                 />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
-                  <span className="text-sm font-medium text-white">Restore</span>
+                <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-1 text-xs text-white truncate">
+                  {thumb.titleText}
                 </div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    deleteFromHistory(thumb.id);
+                    handleDeleteFromHistory(thumb.id);
                   }}
                   className="absolute right-1 top-1 h-6 w-6 rounded-full bg-red-600 text-xs text-white opacity-0 transition-opacity hover:bg-red-700 group-hover:opacity-100"
                 >
@@ -208,63 +412,148 @@ export function ThumbnailGenerator({
       )}
 
       {/* Form */}
-      <div className="mb-6 space-y-4">
-        {/* Title Text */}
+      <div className="mb-6 space-y-5">
+        {/* Free-form Description with Magic Prompt */}
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <label className="text-sm font-medium text-gray-300">
+              Describe your thumbnail
+            </label>
+            <button
+              onClick={handleMagicPrompt}
+              disabled={magicPromptLoading || !hasMagicPromptData}
+              title={hasMagicPromptData ? "Generate AI-powered prompt from video analysis" : "Complete video analysis to use Magic Prompt"}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all",
+                magicPromptLoading
+                  ? "cursor-wait bg-purple-700/50 text-purple-300"
+                  : hasMagicPromptData
+                    ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg hover:from-purple-700 hover:to-pink-700 hover:shadow-purple-500/25"
+                    : "cursor-not-allowed bg-gray-700 text-gray-500"
+              )}
+            >
+              {magicPromptLoading ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <span className="text-lg">✨</span>
+                  Magic Prompt
+                </>
+              )}
+            </button>
+          </div>
+          <div className="relative">
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe what you want to see... e.g., 'A shocked person looking at a computer screen showing crypto charts going up'"
+              rows={3}
+              className="w-full rounded-lg border border-gray-600 bg-gray-800 px-4 py-3 text-white placeholder-gray-500 transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          {magicPromptError && (
+            <p className="mt-2 text-sm text-red-400">{magicPromptError}</p>
+          )}
+        </div>
+
+        {/* Optional Title Text */}
         <div>
           <label className="mb-2 block text-sm font-medium text-gray-300">
-            Title Text <span className="text-gray-500">(2-7 words, max 100 chars)</span>
+            Text to include <span className="text-gray-500">(optional)</span>
           </label>
           <input
             type="text"
             value={titleText}
             onChange={(e) => setTitleText(e.target.value)}
-            placeholder="e.g., Epic Gaming Moments"
-            maxLength={100}
-            className={cn(
-              "w-full rounded-lg border bg-gray-800 px-4 py-3 text-white placeholder-gray-500 transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500",
-              isValidTitle || !titleText ? "border-gray-600" : "border-red-500"
-            )}
-          />
-          <div className="mt-1 flex justify-between text-xs">
-            <span className={cn(wordCount < 2 || wordCount > 7 ? "text-red-400" : "text-gray-500")}>
-              {wordCount} / 7 words
-            </span>
-            <span className={cn(titleText.length > 100 ? "text-red-400" : "text-gray-500")}>
-              {titleText.length} / 100 chars
-            </span>
-          </div>
-        </div>
-
-        {/* Topic */}
-        <div>
-          <label className="mb-2 block text-sm font-medium text-gray-300">Topic / Context</label>
-          <input
-            type="text"
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="e.g., Minecraft speedrun, tech review, finance tips"
-            maxLength={200}
+            placeholder="e.g., SHOCKING RESULTS!"
+            maxLength={50}
             className="w-full rounded-lg border border-gray-600 bg-gray-800 px-4 py-3 text-white placeholder-gray-500 transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500"
           />
         </div>
 
-        {/* Style Selection */}
+        {/* Visual Elements - Clickable Chips */}
         <div>
-          <label className="mb-2 block text-sm font-medium text-gray-300">Thumbnail Style</label>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            {STYLE_OPTIONS.map((opt) => (
+          <label className="mb-2 block text-sm font-medium text-gray-300">Visual Elements</label>
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(VISUAL_ELEMENTS) as VisualElement[]).map((element) => (
               <button
-                key={opt.value}
-                onClick={() => setStyle(opt.value)}
+                key={element}
+                onClick={() => toggleVisualElement(element)}
                 className={cn(
-                  "rounded-lg border p-3 text-left transition-all",
-                  style === opt.value
-                    ? "border-purple-500 bg-purple-600/20 text-white"
-                    : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:bg-gray-700"
+                  "rounded-full px-3 py-1.5 text-sm transition-all",
+                  selectedVisualElements.includes(element)
+                    ? "bg-purple-600 text-white"
+                    : "bg-gray-700 text-gray-300 hover:bg-gray-600"
                 )}
               >
-                <span className="block font-semibold">{opt.label}</span>
-                <span className="text-xs opacity-70">{opt.description}</span>
+                {selectedVisualElements.includes(element) ? "✓ " : "+ "}
+                {getOptionLabel("visualElements", element)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Style Selection */}
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-300">Style</label>
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(STYLE_MODIFIERS) as StyleModifier[]).map((style) => (
+              <button
+                key={style}
+                onClick={() => setSelectedStyle(selectedStyle === style ? null : style)}
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-sm transition-all",
+                  selectedStyle === style
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                )}
+              >
+                {getOptionLabel("styles", style)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Mood Selection */}
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-300">Mood / Energy</label>
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(MOOD_OPTIONS) as MoodOption[]).map((mood) => (
+              <button
+                key={mood}
+                onClick={() => setSelectedMood(selectedMood === mood ? null : mood)}
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-sm transition-all",
+                  selectedMood === mood
+                    ? "bg-orange-600 text-white"
+                    : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                )}
+              >
+                {getOptionLabel("moods", mood)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Color Scheme Selection */}
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-300">Color Scheme</label>
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(COLOR_SCHEMES) as ColorScheme[]).map((scheme) => (
+              <button
+                key={scheme}
+                onClick={() => setSelectedColorScheme(selectedColorScheme === scheme ? null : scheme)}
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-sm transition-all",
+                  selectedColorScheme === scheme
+                    ? "bg-green-600 text-white"
+                    : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                )}
+              >
+                {getOptionLabel("colorSchemes", scheme)}
               </button>
             ))}
           </div>
@@ -281,71 +570,17 @@ export function ThumbnailGenerator({
 
         {/* Advanced Options */}
         {showAdvanced && (
-          <div className="grid grid-cols-1 gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4 md:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-300">
-                Guidance Scale ({guidanceScale})
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="20"
-                step="0.5"
-                value={guidanceScale}
-                onChange={(e) => setGuidanceScale(parseFloat(e.target.value))}
-                className="w-full"
-              />
-              <p className="mt-1 text-xs text-gray-500">Higher = more prompt adherence</p>
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-300">
-                Inference Steps ({numInferenceSteps})
-              </label>
-              <input
-                type="range"
-                min="10"
-                max="50"
-                value={numInferenceSteps}
-                onChange={(e) => setNumInferenceSteps(parseInt(e.target.value))}
-                className="w-full"
-              />
-              <p className="mt-1 text-xs text-gray-500">Higher = more detail, slower</p>
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-300">
-                Seed (optional)
-              </label>
-              <input
-                type="number"
-                value={seed ?? ""}
-                onChange={(e) => setSeed(e.target.value ? parseInt(e.target.value) : undefined)}
-                placeholder="Random"
-                className="w-full rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-white placeholder-gray-500"
-              />
-              <p className="mt-1 text-xs text-gray-500">Fixed seed for reproducibility</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-300">
-                  Primary Color
-                </label>
-                <input
-                  type="color"
-                  value={primaryColor || "#FF0000"}
-                  onChange={(e) => setPrimaryColor(e.target.value)}
-                  className="h-10 w-full cursor-pointer rounded-lg border border-gray-600 bg-gray-800"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-300">Accent Color</label>
-                <input
-                  type="color"
-                  value={accentColor || "#FFFF00"}
-                  onChange={(e) => setAccentColor(e.target.value)}
-                  className="h-10 w-full cursor-pointer rounded-lg border border-gray-600 bg-gray-800"
-                />
-              </div>
-            </div>
+          <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+            <label className="mb-2 block text-sm font-medium text-gray-300">
+              Custom Instructions
+            </label>
+            <textarea
+              value={customInstructions}
+              onChange={(e) => setCustomInstructions(e.target.value)}
+              placeholder="Any additional specific requirements..."
+              rows={2}
+              className="w-full rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-white placeholder-gray-500"
+            />
           </div>
         )}
       </div>
@@ -353,12 +588,12 @@ export function ThumbnailGenerator({
       {/* Generate Button */}
       <button
         onClick={handleGenerate}
-        disabled={status === "generating" || !isValidForm}
+        disabled={status === "generating" || !hasInput}
         className={cn(
           "w-full rounded-lg py-4 text-lg font-bold transition-all",
           status === "generating"
             ? "cursor-wait bg-purple-700 text-white"
-            : isValidForm
+            : hasInput
               ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg hover:from-purple-700 hover:to-pink-700 hover:shadow-purple-500/25"
               : "cursor-not-allowed bg-gray-700 text-gray-400"
         )}
@@ -366,19 +601,28 @@ export function ThumbnailGenerator({
         {status === "generating" ? (
           <span className="flex items-center justify-center gap-2">
             <span className="animate-spin">⏳</span>
-            Generating... This may take 10-30 seconds
+            Generating with Gemini...
           </span>
         ) : (
           "✨ Generate Thumbnail"
         )}
       </button>
 
+      {/* Config Unchanged Warning */}
+      {configUnchangedWarning && (
+        <div className="mt-4 rounded-lg border border-yellow-700 bg-yellow-900/30 p-4">
+          <p className="text-sm text-yellow-400">
+            ⚠️ Configuration unchanged. Please modify your description, style, or other options before regenerating.
+          </p>
+        </div>
+      )}
+
       {/* Error Display */}
       {error && (
         <div className="mt-4 rounded-lg border border-red-700 bg-red-900/30 p-4">
           <p className="text-sm text-red-400">{error}</p>
           <button
-            onClick={reset}
+            onClick={handleReset}
             className="mt-2 text-xs text-red-300 underline hover:text-red-200"
           >
             Dismiss
@@ -398,8 +642,8 @@ export function ThumbnailGenerator({
               <p className="text-xs text-gray-500">Resolution</p>
             </div>
             <div className="rounded-lg bg-gray-800 p-3 text-center">
-              <p className="text-xl font-bold text-purple-400">{result.strategy}</p>
-              <p className="text-xs text-gray-500">Strategy</p>
+              <p className="text-xl font-bold text-purple-400">{result.model.split("/").pop()}</p>
+              <p className="text-xs text-gray-500">Model</p>
             </div>
             <div className="rounded-lg bg-gray-800 p-3 text-center">
               <p className="text-xl font-bold text-purple-400">
@@ -408,10 +652,8 @@ export function ThumbnailGenerator({
               <p className="text-xs text-gray-500">Generation Time</p>
             </div>
             <div className="rounded-lg bg-gray-800 p-3 text-center">
-              <p className="truncate text-xl font-bold text-purple-400" title={String(result.seed)}>
-                {result.seed}
-              </p>
-              <p className="text-xs text-gray-500">Seed</p>
+              <p className="text-xl font-bold text-purple-400">{result.strategy}</p>
+              <p className="text-xs text-gray-500">Strategy</p>
             </div>
           </div>
 
@@ -436,12 +678,20 @@ export function ThumbnailGenerator({
             </button>
             <button
               onClick={handleSave}
-              className="rounded-lg bg-green-600 py-3 font-medium text-white transition-colors hover:bg-green-700"
+              disabled={saveStatus === "saving" || saveStatus === "saved"}
+              className={cn(
+                "rounded-lg py-3 font-medium text-white transition-colors",
+                saveStatus === "saved"
+                  ? "bg-green-700 cursor-default"
+                  : saveStatus === "saving"
+                    ? "bg-green-600/50 cursor-wait"
+                    : "bg-green-600 hover:bg-green-700"
+              )}
             >
-              💾 Save to History
+              {saveStatus === "saved" ? "✓ Saved" : saveStatus === "saving" ? "Saving..." : "💾 Save"}
             </button>
             <button
-              onClick={handleRegenerate}
+              onClick={handleGenerate}
               className="rounded-lg bg-gray-600 py-3 font-medium text-white transition-colors hover:bg-gray-500"
             >
               🔄 Regenerate

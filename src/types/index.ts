@@ -41,6 +41,8 @@ export interface VideoMetadata {
   estimatedProcessingTime: number;
   /** Original video title (for YouTube videos) */
   originalTitle?: string;
+  /** Source URL (for YouTube videos) */
+  sourceUrl?: string;
 }
 
 /**

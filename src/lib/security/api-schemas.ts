@@ -99,6 +99,8 @@ export type TranscribeRequest = z.infer<typeof transcribeRequestSchema>;
  */
 export const youtubeDownloadSchema = z.object({
   url: youtubeUrlSchema,
+  /** If true, re-download even if the URL was already imported */
+  forceReimport: z.boolean().optional(),
 });
 
 export type YoutubeDownloadRequest = z.infer<typeof youtubeDownloadSchema>;

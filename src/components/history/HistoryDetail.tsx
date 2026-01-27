@@ -7,8 +7,14 @@
 
 import { BeautifulInsightsView } from "@/components/BeautifulInsightsView";
 import { RetentionAnalysisView } from "@/components/RetentionAnalysisView";
-import type { HistoryDetail as BrowserHistoryDetail } from "@/lib/database/browser-history-service";
+import {
+  browserHistoryService,
+  type HistoryDetail as BrowserHistoryDetail,
+  type StoredThumbnail,
+} from "@/lib/database/browser-history-service";
 import type { HistoryDetail as SchemaHistoryDetail } from "@/lib/database/schema";
+import Image from "next/image";
+import { useCallback, useEffect, useState } from "react";
 
 // Support both SQLite and IndexedDB detail formats
 type HistoryDetailType = SchemaHistoryDetail | BrowserHistoryDetail;
@@ -26,6 +32,41 @@ function isBrowserDetail(detail: HistoryDetailType): detail is BrowserHistoryDet
 }
 
 export function HistoryDetail({ detail, onExport, onDelete, onRestore }: HistoryDetailProps) {
+  const [thumbnails, setThumbnails] = useState<StoredThumbnail[]>([]);
+
+  // Load thumbnails for this video
+  const loadThumbnails = useCallback(async () => {
+    if (!detail.videoId) return;
+    try {
+      const videoThumbnails = await browserHistoryService.getThumbnailsByVideoId(detail.videoId);
+      setThumbnails(videoThumbnails);
+    } catch (err) {
+      console.error("Failed to load thumbnails:", err);
+    }
+  }, [detail.videoId]);
+
+  useEffect(() => {
+    loadThumbnails();
+  }, [loadThumbnails]);
+
+  const handleDeleteThumbnail = async (thumbnailId: string) => {
+    try {
+      await browserHistoryService.deleteThumbnail(thumbnailId);
+      await loadThumbnails();
+    } catch (err) {
+      console.error("Failed to delete thumbnail:", err);
+    }
+  };
+
+  const handleDownloadThumbnail = (thumb: StoredThumbnail) => {
+    const link = document.createElement("a");
+    link.href = thumb.imageData;
+    link.download = `thumbnail-${thumb.id}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const formatDuration = (seconds: number | null) => {
     if (!seconds) {
       return "—";
@@ -61,10 +102,10 @@ export function HistoryDetail({ detail, onExport, onDelete, onRestore }: History
       <div className="space-y-6 p-6">
         {/* Header */}
         <div className="border-b border-gray-700 pb-4">
-          <div className="mb-4 flex items-start justify-between">
-            <div>
-              <h2 className="mb-2 text-2xl font-bold text-white">{detail.filename}</h2>
-              <div className="flex items-center gap-4 text-sm text-gray-400">
+          <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <h2 className="mb-2 break-words text-2xl font-bold text-white">{detail.filename}</h2>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-gray-400 lg:gap-4">
                 <span>Duration: {formatDuration(detail.duration)}</span>
                 <span>Analyzed: {analyzedAt}</span>
                 <span>
@@ -73,7 +114,7 @@ export function HistoryDetail({ detail, onExport, onDelete, onRestore }: History
                 </span>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {onRestore &&
                 (detail.hasTranscription ||
                   detail.retentionAnalysis ||
@@ -81,20 +122,20 @@ export function HistoryDetail({ detail, onExport, onDelete, onRestore }: History
                   detail.hasAnalysisResult) && (
                   <button
                     onClick={onRestore}
-                    className="rounded-none bg-green-600 px-4 py-2 text-white transition-colors hover:bg-green-700"
+                    className="whitespace-nowrap rounded-none bg-green-600 px-3 py-2 text-sm text-white transition-colors hover:bg-green-700"
                   >
                     Restore to Workspace
                   </button>
                 )}
               <button
                 onClick={onExport}
-                className="rounded-none bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
+                className="whitespace-nowrap rounded-none bg-blue-600 px-3 py-2 text-sm text-white transition-colors hover:bg-blue-700"
               >
                 Export JSON
               </button>
               <button
                 onClick={onDelete}
-                className="rounded-none bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700"
+                className="whitespace-nowrap rounded-none bg-red-600 px-3 py-2 text-sm text-white transition-colors hover:bg-red-700"
               >
                 Delete
               </button>
@@ -166,6 +207,51 @@ export function HistoryDetail({ detail, onExport, onDelete, onRestore }: History
             <h3 className="mb-4 text-lg font-semibold text-white">Transcription</h3>
             <div className="max-h-96 overflow-y-auto rounded-none border border-gray-700 bg-gray-900 p-4">
               <p className="whitespace-pre-wrap text-gray-300">{detail.transcription.text}</p>
+            </div>
+          </section>
+        )}
+
+        {/* Saved Thumbnails */}
+        {thumbnails.length > 0 && (
+          <section>
+            <h3 className="mb-4 text-lg font-semibold text-white">Saved Thumbnails ({thumbnails.length})</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {thumbnails.map((thumb) => (
+                <div
+                  key={thumb.id}
+                  className="group relative overflow-hidden rounded-lg border border-gray-700 bg-gray-900"
+                >
+                  <Image
+                    src={thumb.imageData}
+                    alt={thumb.titleText}
+                    className="aspect-video w-full object-cover"
+                    width={640}
+                    height={360}
+                  />
+                  <div className="p-3">
+                    <p className="truncate text-sm font-medium text-white">{thumb.titleText}</p>
+                    <p className="text-xs text-gray-500">
+                      {thumb.generatedAt instanceof Date
+                        ? thumb.generatedAt.toLocaleString()
+                        : new Date(thumb.generatedAt).toLocaleString()}
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={() => handleDownloadThumbnail(thumb)}
+                        className="flex-1 rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
+                      >
+                        Download
+                      </button>
+                      <button
+                        onClick={() => handleDeleteThumbnail(thumb.id)}
+                        className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
         )}

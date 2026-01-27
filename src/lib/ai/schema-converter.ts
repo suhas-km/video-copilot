@@ -278,7 +278,7 @@ function normalizeGeminiResponse(parsed: unknown): unknown {
           logger.debug("Reconstructing flat key-value array", { field: key, length: value.length });
           result[key] = reconstructObjectsFromFlatArray(value);
         } else {
-          // Parse JSON strings and filter invalid values
+          // Parse JSON strings, filter invalid values, and recursively normalize
           result[key] = value
             .map((item) => {
               if (typeof item === "string") {
@@ -291,7 +291,8 @@ function normalizeGeminiResponse(parsed: unknown): unknown {
               }
               return item;
             })
-            .filter((item) => item !== null && item !== -1 && typeof item === "object");
+            .filter((item) => item !== null && item !== -1 && typeof item === "object")
+            .map((item) => normalizeGeminiResponse(item)); // Recursively normalize parsed objects
         }
       } else {
         result[key] = normalizeGeminiResponse(value);
@@ -348,6 +349,61 @@ function normalizeGeminiResponse(parsed: unknown): unknown {
   if ("toolRecommendations" in result && Array.isArray(result.toolRecommendations)) {
     result.toolRecommendations = (result.toolRecommendations as unknown[])
       .filter((item) => item !== null && typeof item === "object" && !Array.isArray(item));
+  }
+
+  // Fix retentionMetrics: Gemini sometimes returns string instead of object
+  if ("retentionMetrics" in result && typeof result.retentionMetrics === "string") {
+    try {
+      result.retentionMetrics = JSON.parse(result.retentionMetrics as string);
+      logger.debug("Parsed retentionMetrics from string to object");
+    } catch {
+      logger.debug("Converting invalid retentionMetrics string to null");
+      result.retentionMetrics = null;
+    }
+  }
+
+  // Fix pacingMetrics: Gemini sometimes returns string instead of object
+  if ("pacingMetrics" in result && typeof result.pacingMetrics === "string") {
+    try {
+      result.pacingMetrics = JSON.parse(result.pacingMetrics as string);
+      logger.debug("Parsed pacingMetrics from string to object");
+    } catch {
+      logger.debug("Converting invalid pacingMetrics string to null");
+      result.pacingMetrics = null;
+    }
+  }
+
+  // Fix audioMetrics: Gemini sometimes returns string instead of object
+  if ("audioMetrics" in result && typeof result.audioMetrics === "string") {
+    try {
+      result.audioMetrics = JSON.parse(result.audioMetrics as string);
+      logger.debug("Parsed audioMetrics from string to object");
+    } catch {
+      logger.debug("Converting invalid audioMetrics string to null");
+      result.audioMetrics = null;
+    }
+  }
+
+  // Fix styleMetrics: Gemini sometimes returns string instead of object
+  if ("styleMetrics" in result && typeof result.styleMetrics === "string") {
+    try {
+      result.styleMetrics = JSON.parse(result.styleMetrics as string);
+      logger.debug("Parsed styleMetrics from string to object");
+    } catch {
+      logger.debug("Converting invalid styleMetrics string to null");
+      result.styleMetrics = null;
+    }
+  }
+
+  // Fix seoMetrics: Gemini sometimes returns string instead of object
+  if ("seoMetrics" in result && typeof result.seoMetrics === "string") {
+    try {
+      result.seoMetrics = JSON.parse(result.seoMetrics as string);
+      logger.debug("Parsed seoMetrics from string to object");
+    } catch {
+      logger.debug("Converting invalid seoMetrics string to null");
+      result.seoMetrics = null;
+    }
   }
 
   return result;

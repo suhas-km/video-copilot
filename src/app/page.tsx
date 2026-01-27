@@ -775,14 +775,21 @@ export default function Home() {
                     <div className="mt-8">
                       <ThumbnailGenerator
                         videoId={uploadSession?.metadata.id}
-                        suggestedTitle={
+                        videoTitle={
                           uploadSession?.metadata.originalTitle || aiInsights?.seoMetadata?.title
                         }
-                        suggestedTopic={
-                          aiInsights?.seoMetadata?.keywords?.join(", ") ||
-                          uploadSession?.metadata.filename
+                        videoDescription={aiInsights?.seoMetadata?.description}
+                        videoTags={aiInsights?.seoMetadata?.tags}
+                        transcription={transcription?.text}
+                        keyframeDescriptions={analysisResult?.categoryResults ? 
+                          Object.values(analysisResult.categoryResults)
+                            .filter((r): r is { summary?: string } => r !== null && typeof r === 'object' && 'summary' in r)
+                            .map(r => r.summary)
+                            .filter((s): s is string => !!s)
+                          : undefined
                         }
-                        huggingfaceApiKey={huggingfaceApiKey}
+                        videoDuration={uploadSession?.metadata.duration}
+                        geminiApiKey={geminiApiKey}
                       />
                     </div>
                   )}

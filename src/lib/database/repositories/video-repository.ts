@@ -23,8 +23,8 @@ export class VideoRepository {
 
     const insert = db.prepare(`
       INSERT OR REPLACE INTO videos (
-        id, filename, filepath, file_size, duration, width, height, codec, uploaded_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, filename, filepath, file_size, duration, width, height, codec, source_url, uploaded_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     insert.run(
@@ -36,6 +36,7 @@ export class VideoRepository {
       metadata.width ?? null,
       metadata.height ?? null,
       metadata.codec ?? null,
+      metadata.sourceUrl ?? null,
       metadata.uploadedAt.toISOString()
     );
 
@@ -48,6 +49,14 @@ export class VideoRepository {
   getVideoById(id: string): DBVideo | null {
     const db = database.getDb();
     return db.prepare("SELECT * FROM videos WHERE id = ?").get(id) as DBVideo | null;
+  }
+
+  /**
+   * Get video by source URL (for duplicate YouTube detection)
+   */
+  getVideoBySourceUrl(sourceUrl: string): DBVideo | null {
+    const db = database.getDb();
+    return db.prepare("SELECT * FROM videos WHERE source_url = ?").get(sourceUrl) as DBVideo | null;
   }
 
   /**

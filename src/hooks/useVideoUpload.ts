@@ -143,21 +143,41 @@ export function useVideoUpload(options: UseVideoUploadOptions = {}): UseVideoUpl
           success: boolean;
           filename?: string;
           title?: string;
+          description?: string;
+          sourceUrl?: string;
           error?: string;
+          isDuplicate?: boolean;
+          existingVideoId?: string;
+          existingFilename?: string;
         };
 
-        if (!downloadResult.success || !downloadResult.filename) {
-          throw new Error(downloadResult.error || "Download failed - no filename returned");
+        if (!downloadResult.success) {
+          throw new Error(downloadResult.error || "Download failed");
+        }
+
+        // Handle duplicate detection - video was already imported
+        if (downloadResult.isDuplicate && downloadResult.existingFilename) {
+          clientLogger.info(
+            `Video already imported: ${downloadResult.existingFilename}`,
+            { existingVideoId: downloadResult.existingVideoId }
+          );
+          // For now, we'll still fetch the existing video file
+          // In the future, we could prompt the user to choose
+        }
+
+        const filename = downloadResult.filename || downloadResult.existingFilename;
+        if (!filename) {
+          throw new Error("Download failed - no filename returned");
         }
 
         clientLogger.info(
-          `Server download complete, fetching video file: ${downloadResult.filename}`
+          `Server download complete, fetching video file: ${filename}`
         );
         setDownloadProgress(50);
 
         // Step 2: Fetch the actual video file from serve-video endpoint
         const videoResponse = await fetch(
-          `/api/youtube/serve-video?filename=${encodeURIComponent(downloadResult.filename)}`
+          `/api/youtube/serve-video?filename=${encodeURIComponent(filename)}`
         );
 
         if (!videoResponse.ok) {
@@ -204,13 +224,17 @@ export function useVideoUpload(options: UseVideoUploadOptions = {}): UseVideoUpl
         }
 
         const blob = new Blob([combined], { type: "video/mp4" });
-        const filename = downloadResult.filename;
         const file = new File([blob], filename, { type: "video/mp4" });
 
         clientLogger.info(`Video file fetched: ${filename}, size: ${file.size} bytes`);
 
-        // Use upload service to create proper session with YouTube title if available
-        const session = await uploadService.uploadVideo(file, undefined, downloadResult.title);
+        // Use upload service to create proper session with YouTube title and source URL
+        const session = await uploadService.uploadVideo(
+          file,
+          undefined,
+          downloadResult.title,
+          downloadResult.sourceUrl
+        );
 
         setVideo(file, session);
         setUploadComplete(true);

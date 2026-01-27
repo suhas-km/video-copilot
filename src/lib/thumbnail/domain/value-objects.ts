@@ -160,9 +160,9 @@ export const RETRY_CONFIG = {
  * HuggingFace model configurations
  */
 export const HUGGINGFACE_CONFIG = {
-  /** Specialized model with LoRA */
-  SPECIALIZED_MODEL: "black-forest-labs/FLUX.1-Kontext-dev",
-  /** Fallback model (no LoRA) */
+  /** Primary model - SD3 has excellent text rendering for thumbnails */
+  SPECIALIZED_MODEL: "stabilityai/stable-diffusion-3-medium-diffusers",
+  /** Fallback model - FLUX.1-schnell is fast and reliable */
   FALLBACK_MODEL: "black-forest-labs/FLUX.1-schnell",
   /** API timeout in ms */
   API_TIMEOUT_MS: 30000,
