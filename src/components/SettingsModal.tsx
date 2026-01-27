@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, HelpCircle, Loader2, Settings as SettingsIcon, X } from "lucide-react";
+import { Check, Loader2, Settings as SettingsIcon, X } from "lucide-react";
 import { useState } from "react";
 
 type ApiTier = "free" | "pay_as_you_go" | "enterprise";
@@ -10,10 +10,8 @@ interface SettingsModalProps {
   onClose: () => void;
   deepgramApiKey: string;
   geminiApiKey: string;
-  huggingfaceApiKey: string;
   onDeepgramKeyChange: (key: string) => void;
   onGeminiKeyChange: (key: string) => void;
-  onHuggingfaceKeyChange: (key: string) => void;
   apiTier?: ApiTier;
   onApiTierChange?: (tier: ApiTier) => void;
 }
@@ -23,22 +21,17 @@ export function SettingsModal({
   onClose,
   deepgramApiKey,
   geminiApiKey,
-  huggingfaceApiKey,
   onDeepgramKeyChange,
   onGeminiKeyChange,
-  onHuggingfaceKeyChange,
   apiTier = "pay_as_you_go",
   onApiTierChange,
 }: SettingsModalProps) {
   const [testingDeepgram, setTestingDeepgram] = useState(false);
   const [testingGemini, setTestingGemini] = useState(false);
-  const [testingHuggingface, setTestingHuggingface] = useState(false);
   const [deepgramStatus, setDeepgramStatus] = useState<"idle" | "success" | "error">("idle");
   const [geminiStatus, setGeminiStatus] = useState<"idle" | "success" | "error">("idle");
-  const [huggingfaceStatus, setHuggingfaceStatus] = useState<"idle" | "success" | "error">("idle");
   const [deepgramError, setDeepgramError] = useState("");
   const [geminiError, setGeminiError] = useState("");
-  const [huggingfaceError, setHuggingfaceError] = useState("");
 
   const testDeepgramKey = async () => {
     if (!deepgramApiKey) {
@@ -107,41 +100,6 @@ export function SettingsModal({
       setGeminiStatus("error");
     } finally {
       setTestingGemini(false);
-    }
-  };
-
-  const testHuggingfaceKey = async () => {
-    if (!huggingfaceApiKey) {
-      setHuggingfaceError("Please enter an API token first");
-      return;
-    }
-
-    setTestingHuggingface(true);
-    setHuggingfaceStatus("idle");
-    setHuggingfaceError("");
-
-    try {
-      const response = await fetch("/api/huggingface/validate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ apiKey: huggingfaceApiKey }),
-      });
-
-      const data = (await response.json()) as { valid?: boolean; error?: string };
-
-      if (response.ok && data.valid) {
-        setHuggingfaceStatus("success");
-      } else {
-        setHuggingfaceError(data.error || "Invalid API token");
-        setHuggingfaceStatus("error");
-      }
-    } catch (err) {
-      setHuggingfaceError("Failed to validate API token");
-      setHuggingfaceStatus("error");
-    } finally {
-      setTestingHuggingface(false);
     }
   };
 
@@ -267,74 +225,6 @@ export function SettingsModal({
             </p>
           </div>
 
-          {/* HuggingFace API Key */}
-          <div className="mb-4">
-            <label className="mb-1.5 block text-sm font-medium text-gray-300">
-              HuggingFace API Token
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={huggingfaceApiKey}
-                onChange={(e) => {
-                  onHuggingfaceKeyChange(e.target.value);
-                  setHuggingfaceStatus("idle");
-                  setHuggingfaceError("");
-                }}
-                placeholder="Enter your HuggingFace API token"
-                className="flex-1 rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-              <button
-                onClick={testHuggingfaceKey}
-                disabled={!huggingfaceApiKey || testingHuggingface}
-                className="rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-gray-300 transition-all hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {testingHuggingface ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : huggingfaceStatus === "success" ? (
-                  <Check className="h-4 w-4 text-green-500" />
-                ) : (
-                  "Test"
-                )}
-              </button>
-            </div>
-            {huggingfaceError && <p className="mt-1 text-xs text-red-400">{huggingfaceError}</p>}
-            {huggingfaceStatus === "success" && (
-              <p className="mt-1 text-xs text-green-400">API token is valid!</p>
-            )}
-            <p className="mt-1 text-xs text-gray-500">
-              Required for thumbnail generation. Get your token from{" "}
-              <a
-                href="https://huggingface.co/settings/tokens?newKind=fine_grained&name=Video%20Copilot"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-orange-400 font-medium hover:text-orange-300 underline underline-offset-4 decoration-orange-400/30 transition-colors"
-              >
-                HuggingFace Settings
-              </a>
-            </p>
-            <details className="mt-2 rounded-lg border border-orange-500/20 bg-orange-500/5">
-              <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs font-medium text-orange-400">
-                <HelpCircle className="h-3.5 w-3.5" />
-                Required Permissions
-              </summary>
-              <ul className="space-y-1 px-3 pb-2.5 text-[11px] leading-relaxed text-gray-400">
-                <li className="flex items-start gap-1.5">
-                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-orange-400/50" />
-                  <span><strong className="text-gray-300">Token Type:</strong> Use &quot;Fine-grained&quot; for better security.</span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-orange-400/50" />
-                  <span><strong className="text-gray-300">Repositories:</strong> Read access to contents of all repos under your personal namespace and public gated repos.</span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-orange-400/50" />
-                  <span><strong className="text-gray-300">Inference:</strong> &quot;Make calls to Inference Providers&quot; and &quot;Make calls to your Inference Endpoints&quot;.</span>
-                </li>
-              </ul>
-            </details>
-          </div>
-
           {/* Analysis Speed / API Tier */}
           <div className="mb-4">
             <label className="mb-1.5 block text-sm font-medium text-gray-300">
@@ -386,20 +276,6 @@ export function SettingsModal({
               />
               <span className="text-xs text-gray-400">Gemini</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <div
-                className={`h-2 w-2 rounded-full ${
-                  huggingfaceStatus === "success"
-                    ? "bg-green-500"
-                    : huggingfaceStatus === "error"
-                      ? "bg-red-500"
-                      : huggingfaceApiKey
-                        ? "bg-green-500"
-                        : "bg-red-500"
-                }`}
-              />
-              <span className="text-xs text-gray-400">HuggingFace</span>
-            </div>
           </div>
         </div>
 
@@ -409,7 +285,7 @@ export function SettingsModal({
             onClick={onClose}
             className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
           >
-            Done
+            Save
           </button>
         </div>
       </div>

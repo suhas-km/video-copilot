@@ -91,7 +91,6 @@ DEEPGRAM_API_KEY=your_deepgram_api_key_here
 GEMINI_API_KEY=your_gemini_api_key_here
 
 # Optional Configuration
-HUGGINGFACE_API_KEY=your_huggingface_api_key_here  # For thumbnails
 NODE_ENV=development
 LOG_LEVEL=info
 ```
@@ -266,7 +265,6 @@ DEEPGRAM_API_KEY=your_deepgram_api_key_here
 GEMINI_API_KEY=your_gemini_api_key_here
 
 # Optional Configuration
-HUGGINGFACE_API_KEY=your_huggingface_api_key_here  # For thumbnails
 NODE_ENV=development              # Environment (development/production)
 LOG_LEVEL=info                   # Logging level (error/warn/info/debug)
 ```
