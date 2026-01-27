@@ -120,8 +120,9 @@ function sanitizeFilename(title: string, maxLength: number = 100): string {
   // Replace invalid characters with underscores
   let sanitized = title
     .replace(/[<>:"/\\|?*]/g, "_") // Windows invalid chars
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")    // Control characters (exclude tab, newline, form feed)
-    .replace(/\s+/g, "_")           // Whitespace to underscore
+    // eslint-disable-next-line no-control-regex -- Intentional: removing control chars for safe filenames
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
+    .replace(/\s+/g, "_")           // Whitespace to underscores
     .replace(/_+/g, "_")            // Multiple underscores to single
     .replace(/^_+|_+$/g, "");       // Trim underscores
   

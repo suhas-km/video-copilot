@@ -910,7 +910,11 @@ function findJsonValueEnd(text: string, startIndex: number): number {
   } else {
     // Primitive value (number, boolean, null) - find next comma, bracket, or brace
     let i = startIndex;
-    while (i < text.length && text[i] && !/[,\]}]/.test(text[i])) {
+    while (i < text.length) {
+      const char = text[i];
+      if (!char || /[,\]}]/.test(char)) {
+        break;
+      }
       i++;
     }
     return i;
