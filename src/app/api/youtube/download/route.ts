@@ -113,12 +113,14 @@ interface DownloadResponse {
  * Removes/replaces characters that are invalid on most filesystems.
  */
 function sanitizeFilename(title: string, maxLength: number = 100): string {
-  if (!title) return "untitled";
+  if (!title) {
+    return "untitled";
+  }
   
   // Replace invalid characters with underscores
   let sanitized = title
     .replace(/[<>:"/\\|?*]/g, "_") // Windows invalid chars
-    .replace(/[\x00-\x1f]/g, "")    // Control characters
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")    // Control characters (exclude tab, newline, form feed)
     .replace(/\s+/g, "_")           // Whitespace to underscore
     .replace(/_+/g, "_")            // Multiple underscores to single
     .replace(/^_+|_+$/g, "");       // Trim underscores

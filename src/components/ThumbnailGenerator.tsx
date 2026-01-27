@@ -278,7 +278,9 @@ export function ThumbnailGenerator({
    * Download thumbnail as PNG
    */
   const handleDownload = () => {
-    if (!result) return;
+    if (!result) {
+      return;
+    }
 
     const link = document.createElement("a");
     link.href = result.imageData;
@@ -302,7 +304,9 @@ export function ThumbnailGenerator({
    * Save thumbnail to history
    */
   const handleSave = async () => {
-    if (!result) return;
+    if (!result) {
+      return;
+    }
 
     setSaveStatus("saving");
     try {
