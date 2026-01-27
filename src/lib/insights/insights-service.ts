@@ -177,10 +177,14 @@ export class InsightsService {
    * Returns null if no valid data available (falls back to Gemini call)
    */
   private extractScriptSuggestions(analysis?: AnalysisResult): ScriptSuggestion[] | null {
-    if (!analysis?.categoryResults) return null;
+    if (!analysis?.categoryResults) {
+      return null;
+    }
     
     const scriptingResult = analysis.categoryResults.scripting as { issues?: Array<{ category: string; title: string; recommendation: string; timestamp: { start: number; end: number }; confidence: number }> } | null;
-    if (!scriptingResult?.issues?.length) return null;
+    if (!scriptingResult?.issues?.length) {
+      return null;
+    }
 
     logger.info("Reusing pre-computed scripting analysis (skipping Gemini call)");
     
@@ -201,10 +205,14 @@ export class InsightsService {
    * Extract visual recommendations from pre-computed analysis
    */
   private extractVisualRecommendations(analysis?: AnalysisResult): VisualRecommendation[] | null {
-    if (!analysis?.categoryResults) return null;
+    if (!analysis?.categoryResults) {
+      return null;
+    }
     
     const visualResult = analysis.categoryResults.visual_editing as { issues?: Array<{ category: string; title: string; recommendation: string; timestamp: { start: number; end: number }; confidence: number }> } | null;
-    if (!visualResult?.issues?.length) return null;
+    if (!visualResult?.issues?.length) {
+      return null;
+    }
 
     logger.info("Reusing pre-computed visual_editing analysis (skipping Gemini call)");
     
@@ -225,10 +233,14 @@ export class InsightsService {
    * Extract pacing suggestions from pre-computed analysis
    */
   private extractPacingSuggestions(analysis?: AnalysisResult): PacingSuggestion[] | null {
-    if (!analysis?.categoryResults) return null;
+    if (!analysis?.categoryResults) {
+      return null;
+    }
     
     const coreResult = analysis.categoryResults.core_concepts as { issues?: Array<{ category: string; title: string; recommendation: string; timestamp: { start: number; end: number }; confidence: number }> } | null;
-    if (!coreResult?.issues?.length) return null;
+    if (!coreResult?.issues?.length) {
+      return null;
+    }
 
     logger.info("Reusing pre-computed core_concepts analysis (skipping Gemini call)");
     

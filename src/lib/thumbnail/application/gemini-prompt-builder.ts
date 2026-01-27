@@ -122,7 +122,9 @@ const BRAND_PATTERNS = [
  * Sanitize video title to remove source branding
  */
 function sanitizeVideoTitle(title: string): string {
-  if (!title) return "";
+  if (!title) {
+    return "";
+  }
   
   let sanitized = title;
   for (const pattern of BRAND_PATTERNS) {
