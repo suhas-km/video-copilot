@@ -117,7 +117,9 @@ export function createJsonGenerationConfig<T extends z.ZodTypeAny>(
  * These are object properties flattened into an array
  */
 function isFlatKeyValueArray(arr: unknown[]): boolean {
-  if (arr.length < 2) return false;
+  if (arr.length < 2) {
+    return false;
+  }
   
   // Check if first element is a known key name (string) and not an object
   const knownKeys = ["id", "timestamp", "category", "severity", "title", "description", "issue", "recommendation", "confidence", "start", "end"];
@@ -126,7 +128,9 @@ function isFlatKeyValueArray(arr: unknown[]): boolean {
   if (typeof arr[0] === "string" && knownKeys.includes(arr[0].toLowerCase())) {
     // Verify it's not already objects
     const hasObjects = arr.some(item => typeof item === "object" && item !== null);
-    if (!hasObjects) return true;
+    if (!hasObjects) {
+      return true;
+    }
   }
   
   return false;
@@ -822,7 +826,9 @@ function removeDuplicateJsonKeys(text: string, keyName: string): string {
   let result = text;
   for (let i = matches.length - 1; i >= 1; i--) {
     const keyMatch = matches[i];
-    if (!keyMatch) continue;
+    if (!keyMatch) {
+      continue;
+    }
     
     const valueStart = keyMatch.index + keyMatch.length;
     const valueEnd = findJsonValueEnd(result, valueStart);
@@ -904,7 +910,7 @@ function findJsonValueEnd(text: string, startIndex: number): number {
   } else {
     // Primitive value (number, boolean, null) - find next comma, bracket, or brace
     let i = startIndex;
-    while (i < text.length && !/[,\]}]/.test(text[i]!)) {
+    while (i < text.length && text[i] && !/[,\]}]/.test(text[i])) {
       i++;
     }
     return i;

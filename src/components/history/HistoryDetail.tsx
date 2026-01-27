@@ -36,7 +36,9 @@ export function HistoryDetail({ detail, onExport, onDelete, onRestore }: History
 
   // Load thumbnails for this video
   const loadThumbnails = useCallback(async () => {
-    if (!detail.videoId) return;
+    if (!detail.videoId) {
+      return;
+    }
     try {
       const videoThumbnails = await browserHistoryService.getThumbnailsByVideoId(detail.videoId);
       setThumbnails(videoThumbnails);
