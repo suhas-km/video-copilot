@@ -52,7 +52,6 @@ export {
   containsBlockedWords,
   containsPII,
   generateRandomSeed,
-  HUGGINGFACE_CONFIG,
   isValidHexColor,
   PI_PATTERNS,
   redactPrompt,

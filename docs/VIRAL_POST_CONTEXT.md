@@ -18,7 +18,7 @@ A web-based AI platform that analyzes any video (upload or YouTube URL) and prov
 - **Retention analysis** predicting where viewers will drop off
 - **AI-powered insights** for script, visuals, and pacing improvements
 - **SEO optimization** with auto-generated titles, descriptions, tags, and chapters
-- **AI thumbnail generation** using HuggingFace FLUX models
+- **AI thumbnail generation** using Google Gemini
 
 ### The Problem It Solves
 Creating viral video content requires understanding psychology, retention patterns, SEO algorithms, and visual engagement—knowledge that takes years to master. Most creators:
@@ -79,11 +79,11 @@ Analyzes videos across 8 knowledge base categories:
 - **Auto-generated chapters** for YouTube Key Moments
 - **SEO Score** (0-100%) for discoverability rating
 
-### 7. AI Thumbnail Generator (HuggingFace FLUX)
-- 4 style options: High Energy, Minimal Tech, Finance, Gaming
-- Customizable title text and topic
-- Advanced options (guidance scale, inference steps, seed)
-- Brand color customization
+### 7. AI Thumbnail Generator (Google Gemini)
+- Multiple style options and moods
+- Magic Prompt feature - auto-generates description from video analysis
+- Visual elements selection
+- Color scheme customization
 - History tracking with restore/delete
 
 ### 8. Analysis History
@@ -103,7 +103,7 @@ Analyzes videos across 8 knowledge base categories:
 | Animations | Framer Motion |
 | AI - Transcription | Deepgram Nova-2 |
 | AI - Analysis | Google Gemini (gemini-3-flash, gemini-2.5-flash with fallbacks) |
-| AI - Thumbnails | HuggingFace FLUX models |
+| AI - Thumbnails | Google Gemini Imagen |
 | Database | SQLite (browser-based via better-sqlite3) |
 | Audio/Video | FFmpeg, WaveSurfer.js |
 
@@ -144,7 +144,7 @@ Analyzes videos across 8 knowledge base categories:
 ## 🎬 Hackathon Context
 
 Built for the **Cerebras + Cline Hackathon** in 24 hours. Demonstrates:
-- Production-grade AI integration (Deepgram, Gemini, HuggingFace)
+- Production-grade AI integration (Deepgram, Gemini)
 - Modern web stack (Next.js 14, TypeScript, Tailwind)
 - Sophisticated state management and error handling
 - Beautiful, functional UI with dark mode

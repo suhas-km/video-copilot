@@ -26,7 +26,6 @@ export interface ThumbnailGenerationRequest {
   guidanceScale?: number;
   numInferenceSteps?: number;
   seed?: number;
-  huggingfaceApiKey?: string;
 }
 
 /**

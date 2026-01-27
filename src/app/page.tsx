@@ -64,7 +64,6 @@ export default function Home() {
 
   const [deepgramApiKey, setDeepgramApiKey] = useState<string>("");
   const [geminiApiKey, setGeminiApiKey] = useState<string>("");
-  const [huggingfaceApiKey, setHuggingfaceApiKey] = useState<string>("");
   const [apiTier, setApiTier] = useState<"free" | "pay_as_you_go" | "enterprise">("pay_as_you_go");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [dbInitialized, setDbInitialized] = useState(false);
@@ -79,15 +78,11 @@ export default function Home() {
     if (typeof window !== "undefined") {
       const savedDeepgramKey = localStorage.getItem("deepgram_api_key");
       const savedGeminiKey = localStorage.getItem("gemini_api_key");
-      const savedHuggingfaceKey = localStorage.getItem("huggingface_api_key");
       if (savedDeepgramKey) {
         setDeepgramApiKey(savedDeepgramKey);
       }
       if (savedGeminiKey) {
         setGeminiApiKey(savedGeminiKey);
-      }
-      if (savedHuggingfaceKey) {
-        setHuggingfaceApiKey(savedHuggingfaceKey);
       }
       const savedApiTier = localStorage.getItem("api_tier") as "free" | "pay_as_you_go" | "enterprise" | null;
       if (savedApiTier) {
@@ -114,17 +109,6 @@ export default function Home() {
         localStorage.setItem("gemini_api_key", key);
       } else {
         localStorage.removeItem("gemini_api_key");
-      }
-    }
-  }, []);
-
-  const handleHuggingfaceKeyChange = useCallback((key: string) => {
-    setHuggingfaceApiKey(key);
-    if (typeof window !== "undefined") {
-      if (key) {
-        localStorage.setItem("huggingface_api_key", key);
-      } else {
-        localStorage.removeItem("huggingface_api_key");
       }
     }
   }, []);
@@ -816,10 +800,8 @@ export default function Home() {
         onClose={() => setIsSettingsOpen(false)}
         deepgramApiKey={deepgramApiKey}
         geminiApiKey={geminiApiKey}
-        huggingfaceApiKey={huggingfaceApiKey}
         onDeepgramKeyChange={handleDeepgramKeyChange}
         onGeminiKeyChange={handleGeminiKeyChange}
-        onHuggingfaceKeyChange={handleHuggingfaceKeyChange}
         apiTier={apiTier}
         onApiTierChange={handleApiTierChange}
       />

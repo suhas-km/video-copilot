@@ -246,7 +246,6 @@ export const thumbnailGenerationSchema = z.object({
   guidanceScale: z.number().min(1).max(20).optional(),
   numInferenceSteps: z.number().int().min(10).max(50).optional(),
   seed: z.number().int().min(0).optional(),
-  huggingfaceApiKey: apiKeySchema.optional(),
 });
 
 export type ThumbnailGenerationRequest = z.infer<typeof thumbnailGenerationSchema>;

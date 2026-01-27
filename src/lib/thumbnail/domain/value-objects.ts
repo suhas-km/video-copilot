@@ -153,31 +153,6 @@ export const RETRY_CONFIG = {
 };
 
 // ============================================================================
-// HuggingFace Configuration
-// ============================================================================
-
-/**
- * HuggingFace model configurations
- */
-export const HUGGINGFACE_CONFIG = {
-  /** Primary model - SD3 has excellent text rendering for thumbnails */
-  SPECIALIZED_MODEL: "stabilityai/stable-diffusion-3-medium-diffusers",
-  /** Fallback model - FLUX.1-schnell is fast and reliable */
-  FALLBACK_MODEL: "black-forest-labs/FLUX.1-schnell",
-  /** API timeout in ms */
-  API_TIMEOUT_MS: 30000,
-  /** Request timeout in ms */
-  REQUEST_TIMEOUT_MS: 60000,
-  /** Default image dimensions */
-  DEFAULT_WIDTH: 1280,
-  DEFAULT_HEIGHT: 720,
-  /** Default guidance scale */
-  DEFAULT_GUIDANCE_SCALE: 7.5,
-  /** Default inference steps */
-  DEFAULT_INFERENCE_STEPS: 30,
-};
-
-// ============================================================================
 // Utility Functions
 // ============================================================================
 
