@@ -232,6 +232,7 @@ export async function POST(request: NextRequest) {
     // Format: best video up to 720p + best audio, merged to mp4
     // Example: 4K video (333MB) → 720p (~50MB)
     const MAX_HEIGHT = 720;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- extractorArgs not in types but supported by yt-dlp
     await ytdl.exec(url, {
       output: filePath,
       format: `bestvideo[height<=${MAX_HEIGHT}]+bestaudio/best[height<=${MAX_HEIGHT}]/best`,
@@ -242,7 +243,8 @@ export async function POST(request: NextRequest) {
       userAgent:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       ageLimit: 100, // Set age limit to 100 years to bypass age-gated videos
-    });
+      extractorArgs: "youtube:player_client=web", // Use web client to avoid 403 Forbidden errors
+    } as Record<string, unknown>);
 
     logInfo("[YouTube Download] Download complete", "youtube-download");
 

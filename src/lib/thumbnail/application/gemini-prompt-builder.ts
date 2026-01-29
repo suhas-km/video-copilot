@@ -145,75 +145,72 @@ function sanitizeVideoTitle(title: string): string {
 export function buildGeminiThumbnailPrompt(options: ThumbnailOptions): string {
   const parts: string[] = [];
 
-  // Start with the base instruction - explicitly forbid logos/watermarks
-  parts.push("Create a highly engaging, click-worthy YouTube thumbnail image");
-  parts.push("IMPORTANT: Do NOT include any logos, watermarks, brand names, channel names, or copyright symbols");
+  // Professional quality prefix for Gemini 3 Pro Image
+  parts.push("Generate a professional, high-resolution YouTube thumbnail image");
+  
+  // Technical specifications
+  parts.push("Technical specs: 16:9 aspect ratio, 1280x720 minimum resolution, vibrant colors optimized for small preview sizes");
 
-  // Add aspect ratio requirement
-  parts.push("Format: 16:9 landscape");
-
-  // Add free-form description if provided
+  // Main subject/description
   if (options.description && options.description.trim()) {
-    parts.push(`showing: ${options.description.trim()}`);
+    parts.push(`Main subject: ${options.description.trim()}`);
   }
 
-  // Add context from video title/description - but sanitize it first
+  // Context from video
   if (options.videoTitle) {
     const cleanTitle = sanitizeVideoTitle(options.videoTitle);
     if (cleanTitle) {
-      parts.push(`Theme/topic: ${cleanTitle}`);
+      parts.push(`Content theme: "${cleanTitle}"`);
     }
   }
 
-  // Add title text if user wants text in the image - with quality instructions
-  if (options.titleText && options.titleText.trim()) {
-    parts.push(`Include this EXACT text prominently: "${options.titleText.trim()}". The text must be crystal clear, perfectly spelled, highly legible, with sharp edges and professional typography`);
-  }
-
-  // Add style modifier
+  // Style with enhanced descriptors
   if (options.style && STYLE_MODIFIERS[options.style]) {
-    parts.push(`Style: ${STYLE_MODIFIERS[options.style]}`);
+    parts.push(`Visual style: ${STYLE_MODIFIERS[options.style]}, with professional studio-quality rendering`);
+  } else {
+    parts.push("Visual style: cinematic, professional photography with dramatic lighting");
   }
 
-  // Add mood
+  // Mood with intensity
   if (options.mood && MOOD_OPTIONS[options.mood]) {
-    parts.push(`The overall mood should be ${MOOD_OPTIONS[options.mood]}`);
+    parts.push(`Emotional tone: intensely ${MOOD_OPTIONS[options.mood]}`);
   }
 
-  // Add color scheme
+  // Color scheme with specifics
   if (options.colorScheme && COLOR_SCHEMES[options.colorScheme]) {
-    parts.push(`Color palette: ${COLOR_SCHEMES[options.colorScheme]}`);
+    parts.push(`Color palette: ${COLOR_SCHEMES[options.colorScheme]}, with rich saturation and strong contrast`);
+  } else {
+    parts.push("Color palette: vibrant, eye-catching colors with high contrast for visibility");
   }
 
-  // Add visual elements
+  // Visual elements
   if (options.visualElements && options.visualElements.length > 0) {
     const elementDescriptions = options.visualElements
       .map((el) => VISUAL_ELEMENTS[el])
       .filter(Boolean);
     if (elementDescriptions.length > 0) {
-      parts.push(`Include: ${elementDescriptions.join(", ")}`);
+      parts.push(`Key visual elements: ${elementDescriptions.join("; ")}`);
     }
   }
 
-  // Add custom instructions
-  if (options.customInstructions && options.customInstructions.trim()) {
-    parts.push(`Additional requirements: ${options.customInstructions.trim()}`);
+  // Text overlay with strict requirements
+  if (options.titleText && options.titleText.trim()) {
+    parts.push(`Text overlay: Display "${options.titleText.trim()}" prominently - use bold, sans-serif typography with high contrast, drop shadow for readability, perfectly centered or rule-of-thirds positioned`);
   }
 
-  // Add quality and thumbnail-specific requirements
-  parts.push(
-    "The image must be eye-catching, ultra high quality, and optimized for YouTube thumbnail viewing"
-  );
-  
-  // Add text quality requirements if any text is expected
-  if (options.titleText || options.visualElements?.includes("BOLD_TEXT")) {
-    parts.push(
-      "Any text in the image must be: perfectly spelled with zero errors, crystal clear with sharp edges, using bold professional fonts, highly readable even at small sizes"
-    );
+  // Custom instructions
+  if (options.customInstructions && options.customInstructions.trim()) {
+    parts.push(`Special requirements: ${options.customInstructions.trim()}`);
   }
+
+  // Quality enforcement
+  parts.push("Quality requirements: Ultra-sharp focus, professional composition using rule of thirds, dramatic depth of field, cinematic color grading");
   
-  // Final reminder about no branding
-  parts.push("Remember: absolutely NO logos, watermarks, or brand names anywhere in the image");
+  // CTR optimization
+  parts.push("Optimize for click-through: Create visual curiosity, use focal point to draw the eye, ensure the thumbnail is compelling even at 120x90 pixel preview size");
+  
+  // Strict prohibitions
+  parts.push("STRICTLY FORBIDDEN: No logos, no watermarks, no brand names, no copyright symbols, no UI elements, no text other than specified");
 
   return parts.join(". ") + ".";
 }
@@ -223,13 +220,13 @@ export function buildGeminiThumbnailPrompt(options: ThumbnailOptions): string {
  * For users who want maximum creative freedom
  */
 export function buildSimplePrompt(description: string, titleText?: string): string {
-  let prompt = `Create a YouTube thumbnail: ${description}. Do NOT include any logos, watermarks, or brand names.`;
+  let prompt = `Generate a professional YouTube thumbnail image: ${description}. Technical specs: 16:9 aspect ratio, high resolution, vibrant colors.`;
 
   if (titleText) {
-    prompt += ` Include this EXACT text prominently: "${titleText}". Text must be crystal clear, perfectly spelled, with professional typography.`;
+    prompt += ` Display this text prominently: "${titleText}" - bold sans-serif typography, high contrast, drop shadow for readability.`;
   }
 
-  prompt += " Make it eye-catching and click-worthy, 16:9 aspect ratio. No logos or watermarks.";
+  prompt += " Quality: Ultra-sharp focus, cinematic lighting, professional composition. Optimize for click-through rate. STRICTLY FORBIDDEN: No logos, watermarks, brand names, or UI elements.";
 
   return prompt;
 }

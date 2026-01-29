@@ -28,10 +28,10 @@ import { CircuitBreakerFactory } from "./circuit-breaker";
  * Gemini model configurations
  */
 export const GEMINI_IMAGE_CONFIG = {
-  /** Primary model - Gemini 3 Pro Image for professional quality */
-  PRO_MODEL: "gemini-2.0-flash-exp",
+  /** Primary model - Gemini 3 Pro Image for professional quality (4K, thinking process) */
+  PRO_MODEL: "gemini-3-pro-image-preview",
   /** Fallback model - Gemini 2.5 Flash Image for speed */
-  FLASH_MODEL: "gemini-2.0-flash-exp",
+  FLASH_MODEL: "gemini-2.5-flash-image",
   /** API base URL */
   API_BASE_URL: "https://generativelanguage.googleapis.com/v1beta/models",
   /** API timeout in ms */
@@ -226,6 +226,8 @@ export class GeminiImageAdapter implements InferenceProviderPort {
         generationConfig: {
           responseModalities: ["IMAGE", "TEXT"],
           temperature: 1,
+          // Request higher quality output
+          candidateCount: 1,
         },
       };
 
